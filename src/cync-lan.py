@@ -2003,34 +2003,34 @@ class CyncLanServer:
                         f"({len(self.known_ids)}): {self.known_ids}"
                     )
                 )
-
-                votes = defaultdict(int)
-                for mesh_info in mesh_info_list:
-                    if mesh_info is not None:
-                        status_list = mesh_info.status
-                        for dev_status in status_list:
-                            votes[str(dev_status)] += 1
-
-                sorted_votes = dict(
-                    sorted(votes.items(), key=lambda item: item[1], reverse=True)
-                )
-                unique_dict = {}
-                for status_, votes_ in sorted_votes.items():
-                    status_ = ast.literal_eval(status_)
-                    if status_[0] not in unique_dict:
-                        unique_dict[status_[0]] = {votes_: status_}
-
-                for _id, vote_status_dict in unique_dict.items():
-                    for voted_best_status in vote_status_dict.values():
-                        bds = DeviceStatus(
-                            state=voted_best_status[1],
-                            brightness=voted_best_status[2],
-                            temperature=voted_best_status[3],
-                            red=voted_best_status[4],
-                            green=voted_best_status[5],
-                            blue=voted_best_status[6],
-                        )
-                        await g.mqtt.parse_device_status(_id, bds)
+                # Dont need status from the mesh, we now rely solely on internal status packets.
+                # votes = defaultdict(int)
+                # for mesh_info in mesh_info_list:
+                #     if mesh_info is not None:
+                #         status_list = mesh_info.status
+                #         for dev_status in status_list:
+                #             votes[str(dev_status)] += 1
+                #
+                # sorted_votes = dict(
+                #     sorted(votes.items(), key=lambda item: item[1], reverse=True)
+                # )
+                # unique_dict = {}
+                # for status_, votes_ in sorted_votes.items():
+                #     status_ = ast.literal_eval(status_)
+                #     if status_[0] not in unique_dict:
+                #         unique_dict[status_[0]] = {votes_: status_}
+                #
+                # for _id, vote_status_dict in unique_dict.items():
+                #     for voted_best_status in vote_status_dict.values():
+                #         bds = DeviceStatus(
+                #             state=voted_best_status[1],
+                #             brightness=voted_best_status[2],
+                #             temperature=voted_best_status[3],
+                #             red=voted_best_status[4],
+                #             green=voted_best_status[5],
+                #             blue=voted_best_status[6],
+                #         )
+                #         await g.mqtt.parse_device_status(_id, bds)
 
                 await asyncio.sleep(CYNC_MESH_CHECK_INTERVAL)
 
