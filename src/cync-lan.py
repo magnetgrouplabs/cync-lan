@@ -37,7 +37,7 @@ DEVICE_LWT_MSG: bytes = b"offline"
 # Hopefully keeps devices in sync (seems to do pretty good).
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
 CYNC_MESH_CHECK_INTERVAL: int = int(os.environ.get("CYNC_MESH_CHECK", 30)) or 30
-CYNC_MQTT_URL = os.environ.get("CYNC_MQTT_URL", "mqtt://homeassistant.local:1883")
+CYNC_MQTT_URL = os.environ.get("CYNC_MQTT_URL")
 CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
 CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
 CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER", "mqtt_user")
