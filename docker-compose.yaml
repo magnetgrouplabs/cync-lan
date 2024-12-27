@@ -22,11 +22,7 @@ services:
 #      - ./cync-lan.py:/root/cync-lan/cync-lan.py
     environment:
       TZ: "America/Chicago"
-      # If you don't use auth you can remove user:pass@ from the CYNC_MQTT_URL
-      # CYNC_MQTT_URL is legacy, but will be parsed to migrate to new style
-      CYNC_MQTT_URL: "mqtt://user:pass@ip:port/"
-      # new style MQTT config
-#      CYNC_MQTT_HOST: "ip of broker"
+#      CYNC_MQTT_HOST: "homeassistant.local"
 #      CYNC_MQTT_PORT: 1833
 #      CYNC_MQTT_USER: "username"
 #      CYNC_MQTT_PASS: "password"
