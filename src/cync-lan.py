@@ -3676,7 +3676,7 @@ class MQTTClient:
                         )
                         # register devices
                         await self.homeassistant_discovery()
-                        await asyncio.sleep(0.025)
+                        await asyncio.sleep(0.25)
                         # set the device online/offline and set its status
                         for device in g.server.devices.values():
                             await self.pub_online(device.id, device.online)
