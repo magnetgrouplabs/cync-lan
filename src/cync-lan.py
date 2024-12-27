@@ -638,10 +638,10 @@ class CyncCloudAPI:
 
 
 type_2_str = {
-    31: "Full Color C by GE BTLE A19 Bulb",
+    31: "C by GE Full Color A19 Bulb (BTLE only)",
     37: "Dimmer Switch with Motion and Ambient Light",
-    42: "Cync GE Reveal HD+ Smart Under Cabinet Light, 18 Inch",
-    43: "Cync GE Reveal HD+ Smart Under Cabinet Light, 24 Inch",
+    42: "Reveal HD+ Smart Under Cabinet Light - 18 Inch",
+    43: "Reveal HD+ Smart Under Cabinet Light - 24 Inch",
     68: "Indoor Direct Connect Plug",
     113: "Wire-Free White Temperature Dimmer Switch",
     133: "Full Color Direct Connect LED Light Strip Controller",
