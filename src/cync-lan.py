@@ -2208,7 +2208,22 @@ class CyncLAN:
             logger.error(f"{self.lp} Error reading config file: {e}", exc_info=True)
             raise e
         devices = {}
-        if "mqtt_url" in raw_config:
+        if "mqtt" in raw_config:
+            raw_mqtt_conf = raw_config["mqtt"]
+            if "host" in raw_mqtt_conf:
+                CYNC_MQTT_HOST = raw_mqtt_conf["host"]
+                logger.info(f"{self.lp} MQTT Host set by config file to: {CYNC_MQTT_HOST}")
+            if "port" in raw_mqtt_conf and (_mport := raw_mqtt_conf["port"]):
+                _mport = _mport.rstrip("/")
+                CYNC_MQTT_PORT = _mport
+                logger.info(f"{self.lp} MQTT Port set by config file to: {CYNC_MQTT_PORT}")
+            if "username" in raw_mqtt_conf:
+                CYNC_MQTT_USER = raw_mqtt_conf["username"]
+                logger.info(f"{self.lp} MQTT Username set by config file")
+            if "password" in raw_mqtt_conf:
+                CYNC_MQTT_PASS = raw_mqtt_conf["password"]
+                logger.info(f"{self.lp} MQTT Password set by config file")
+        elif "mqtt_url" in raw_config:
             logger.info(f"{self.lp} LEGACY MQTT URL set by config file, parsing into its own components (host, port, username, password)...")
             _host, _port, _uname, _pass = None, None, None, None
             _murl = raw_config["mqtt_url"].lstrip("mqtt://")
@@ -2227,21 +2242,29 @@ class CyncLAN:
                     _port = 1883
             raw_config["mqtt"]["host"] = _host
             raw_config["mqtt"]["port"] = _port
-        if "mqtt" in raw_config:
-            raw_mqtt_conf = raw_config["mqtt"]
-            if "host" in raw_mqtt_conf:
-                CYNC_MQTT_HOST = raw_mqtt_conf["host"]
-                logger.info(f"{self.lp} MQTT Host set by config file to: {CYNC_MQTT_HOST}")
-            if "port" in raw_mqtt_conf and (_mport := raw_mqtt_conf["port"]):
-                _mport = _mport.rstrip("/")
-                CYNC_MQTT_PORT = _mport
-                logger.info(f"{self.lp} MQTT Port set by config file to: {CYNC_MQTT_PORT}")
-            if "username" in raw_mqtt_conf:
-                CYNC_MQTT_USER = raw_mqtt_conf["username"]
-                logger.info(f"{self.lp} MQTT Username set by config file")
-            if "password" in raw_mqtt_conf:
-                CYNC_MQTT_PASS = raw_mqtt_conf["password"]
-                logger.info(f"{self.lp} MQTT Password set by config file")
+        else:
+            # no mqtt config in config file, use env vars
+            # parse ENV vars into host, port, user, pass
+            logger.debug(f"{self.lp} No MQTT config found in config file, checking ENV vars...")
+            if CYNC_MQTT_URL:
+                logger.info(f"{self.lp} LEGACY CYNC_MQTT_URL set by ENV vars, parsing into its own components (host, port, username, password)...")
+                _murl = CYNC_MQTT_URL.lstrip("mqtt://").rstrip('/')
+                if "@" in _murl:
+                    _creds, _hostport = _murl.split("@")
+                    _host, _port = _hostport.split(":")
+                    _uname, _pass = _creds.split(":")
+                    CYNC_MQTT_USER = _uname
+                    CYNC_MQTT_PASS = _pass
+                else:
+                    if ":" in _murl:
+                        _host, _port = _murl.split(":")
+                    else:
+                        _host = _murl
+                        _port = 1883
+                CYNC_MQTT_HOST = _host
+                CYNC_MQTT_PORT = _port
+
+        # logger.debug(f"{self.lp} MQTT Config: HOST: {CYNC_MQTT_HOST} // PORT: {CYNC_MQTT_PORT} // UNAME: {CYNC_MQTT_USER} // PASS: {CYNC_MQTT_PASS}")
         if "cert" in raw_config:
             CYNC_CERT = raw_config["cert_file"]
             logger.info(f"{self.lp} Cert file set by config file to: {CYNC_CERT}")
