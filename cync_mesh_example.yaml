@@ -1,18 +1,11 @@
 # The config file will overwrite environment variables. Be aware!
-
-# MQTT broker URL (LEGACY, but will be parsed to migrate to new style)
-# auth: "mqtt://user:password@address:port/
-# no auth: "mqtt://address:port/"
-
-#mqtt_url: "mqtt://homeassistant.local:1883/"
-# New MQTT style
 mqtt:
-  host: 1.2.3.4
+  host: homeassistant.local
   port: 1883
-  username: cynclan
-  password: SuperSecretPassPhrase
+#  username: cynclan
+#  password: SuperSecretPassPhrase
 
-# CyncLAN server options
+# - CyncLAN server options (should not need to change)
 #cert: "certs/cert.pem"
 #key: "certs/key.pem"
 #host: "0.0.0.0"
@@ -33,7 +26,7 @@ account data:
     devices:
       1:
         name: Office Lamp
-        # enabled: no will disable the device, it will not be reported to hass. (Default: yes)
+        # 'enabled: no' will disable the device, it will not be reported to hass. (Default: yes)
         enabled: yes
         # mac is the BT MAC, used in HASS MQTT device page and as a unique identifier.
         mac: 78:6D:EB:28:EA:A4
@@ -100,4 +93,4 @@ account data:
         wifi_mac: 00:01:02:03:04:05
         type: 113
         fw: 2.3.054
-        description: on/off, brightness, white temperature, BT, battery (NOT SUPPORTED)
+        description: on/off, brightness, white temperature, BT, battery (NOT SUPPORTED) wire free dimmer switch
