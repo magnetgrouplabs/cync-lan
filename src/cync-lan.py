@@ -2273,7 +2273,7 @@ class CyncLAN:
             logger.info(f"{self.lp} Key file set by config file to: {CYNC_KEY}")
         if "host" in raw_config:
             CYNC_HOST = raw_config["host"]
-            logger.info(f"{self.lp} HTTP host set by config file to: {CYNC_HOST}")
+            logger.info(f"{self.lp} HTTP interface set by config file to: {CYNC_HOST}")
         if "port" in raw_config:
             CYNC_PORT = raw_config["port"]
             logger.info(f"{self.lp} HTTP port set by config file to: {CYNC_PORT}")
