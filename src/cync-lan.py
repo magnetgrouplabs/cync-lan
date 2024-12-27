@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import ast
 import asyncio
 import datetime
 import getpass
