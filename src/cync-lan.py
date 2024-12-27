@@ -3501,6 +3501,11 @@ class MQTTClient:
                 await self.client.__aexit__(None, None, None)
             except Exception as innr_exc:
                 pass
+            if "name or service not known" in str(ce).casefold():
+                logger.critical(f"{lp} MQTT broker host is not replying, please check if the MQTT broker is up or if you have a typo in the host address/name")
+                # send sigterm to bring async loop down
+                os.kill(os.getpid(), signal.SIGTERM)
+
         else:
             logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
 
