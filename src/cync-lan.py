@@ -2214,7 +2214,9 @@ class CyncLAN:
                 CYNC_MQTT_HOST = raw_mqtt_conf["host"]
                 logger.info(f"{self.lp} MQTT Host set by config file to: {CYNC_MQTT_HOST}")
             if "port" in raw_mqtt_conf and (_mport := raw_mqtt_conf["port"]):
-                _mport = _mport.rstrip("/")
+                if isinstance(_mport, str):
+                    _mport = int(_mport.rstrip('/'))
+                _mport = _mport
                 CYNC_MQTT_PORT = _mport
                 logger.info(f"{self.lp} MQTT Port set by config file to: {CYNC_MQTT_PORT}")
             if "username" in raw_mqtt_conf:
@@ -2226,22 +2228,22 @@ class CyncLAN:
         elif "mqtt_url" in raw_config:
             logger.info(f"{self.lp} LEGACY MQTT URL set by config file, parsing into its own components (host, port, username, password)...")
             _host, _port, _uname, _pass = None, None, None, None
-            _murl = raw_config["mqtt_url"].lstrip("mqtt://")
+            _murl = raw_config["mqtt_url"].lstrip("mqtt://").rstrip('/')
             raw_config["mqtt"] = {}
             if "@" in _murl:
                 _creds, _hostport = _murl.split("@")
                 _host, _port = _hostport.split(":")
                 _uname, _pass = _creds.split(":")
-                raw_config["mqtt"]["username"] = _uname
-                raw_config["mqtt"]["password"] = _pass
+                CYNC_MQTT_USER = raw_config["mqtt"]["username"] = _uname
+                CYNC_MQTT_PASS = raw_config["mqtt"]["password"] = _pass
             else:
                 if ":" in _murl:
                     _host, _port = _murl.split(":")
                 else:
                     _host = _murl
                     _port = 1883
-            raw_config["mqtt"]["host"] = _host
-            raw_config["mqtt"]["port"] = _port
+            CYNC_MQTT_HOST = raw_config["mqtt"]["host"] = _host
+            CYNC_MQTT_PORT = raw_config["mqtt"]["port"] = _port
         else:
             # no mqtt config in config file, use env vars
             # parse ENV vars into host, port, user, pass
