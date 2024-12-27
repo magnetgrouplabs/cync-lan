@@ -25,8 +25,7 @@ import requests
 import uvloop
 import yaml
 
-
-__version__: str = "0.1.4"
+__version__: str = "0.1.7"
 
 from requests import HTTPError
 
