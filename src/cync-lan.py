@@ -816,7 +816,7 @@ class CyncDevice:
             28,
             29,
             30,
-            31,  # BTLE only bulb?
+            31,
             32,
             33,
             34,
@@ -939,7 +939,7 @@ class CyncDevice:
             22,
             23,
             30,
-            31,  # BTLE only bulb?
+            31,
             32,
             33,
             34,
@@ -2267,7 +2267,6 @@ class CyncLAN:
                         _port = 1883
                 CYNC_MQTT_HOST = _host
                 CYNC_MQTT_PORT = _port
-
         # logger.debug(f"{self.lp} MQTT Config: HOST: {CYNC_MQTT_HOST} // PORT: {CYNC_MQTT_PORT} // UNAME: {CYNC_MQTT_USER} // PASS: {CYNC_MQTT_PASS}")
         if "cert" in raw_config:
             CYNC_CERT = raw_config["cert_file"]
@@ -2281,6 +2280,17 @@ class CyncLAN:
         if "port" in raw_config:
             CYNC_PORT = raw_config["port"]
             logger.info(f"{self.lp} HTTP port set by config file to: {CYNC_PORT}")
+        os.environ["CYNC_CERT"] = CYNC_CERT
+        os.environ["CYNC_KEY"] = CYNC_KEY
+        os.environ["CYNC_HOST"] = CYNC_HOST
+        os.environ["CYNC_PORT"] = str(CYNC_PORT)
+        os.environ["CYNC_MQTT_HOST"] = CYNC_MQTT_HOST
+        os.environ["CYNC_MQTT_PORT"] = str(CYNC_MQTT_PORT)
+        if CYNC_MQTT_USER:
+            os.environ["CYNC_MQTT_USER"] = CYNC_MQTT_USER
+        if CYNC_MQTT_PASS:
+            os.environ["CYNC_MQTT_PASS"] = CYNC_MQTT_PASS
+        # parse homes and devices
         for cfg_name, cfg in raw_config["account data"].items():
             home_id = cfg["id"]
             if "devices" not in cfg:
