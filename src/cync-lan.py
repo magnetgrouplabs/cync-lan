@@ -3874,7 +3874,7 @@ class MQTTClient:
                     "connections": [("mac", device.mac.casefold())],
                     "name": device.name,
                     "sw_version": ver_str,
-                    "model": type_2_str[device.type] or "Unknown",
+                    "model": model_str,
                 }
                 dev_registry_conf = {
                     "object_id": obj_id,
