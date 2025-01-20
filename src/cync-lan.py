@@ -3868,6 +3868,9 @@ class MQTTClient:
                         ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}.{dev_fw_version[2:]}"
                 elif fw_len == 2:
                     ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}"
+                model_str = "Unknown"
+                if device.type in type_2_str:
+                    model_str = type_2_str[device.type]
                 device_struct = {
                     "identifiers": [unique_id],
                     "manufacturer": "Savant",
