@@ -39,6 +39,12 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 ## Installation
 Docker and local script supported! Please see [Install docs](./docs/install.md) for more information.
 
+### Updating Docker Container
+Go to the docker directory for cync-lan (where the docker-compose.yaml file lives) and run:
+```bash
+docker compose pull && docker compose up -d --force-recreate
+````
+
 ## Re-routing / Overriding DNS
 >[!WARNING] 
 > After freshly redirecting DNS: Devices that are currently
