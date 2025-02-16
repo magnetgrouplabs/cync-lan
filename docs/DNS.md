@@ -59,7 +59,8 @@ local-data: "cm.gelighting.com. 90 IN A 10.0.1.9"
 
 >[!TIP]
 > Don't redirect your phone app. Let it talk to the Cync cloud so you can add new devices, the phone app 
-> should use bluetooth for local control anyway. The new device must also not be redirected.
+> should use bluetooth for local control anyway. The only time you will want to redirect the phone app is if you are 
+> debugging communication between the phone app and the cloud using socat (or other programs similar to socat). 
 
 >[!TIP]
 > If you have a decent (6+) amount of Cync WiFi devices, after you get things working correctly,
@@ -131,7 +132,8 @@ You will need to disable the DNS override, add the device(s), then re-enable the
 
 It will let you get all the way to the end of adding the device and fail on the last step of 'Adding to your home'.
 
-*If you are using `unbound` and `views:` to selectively route DNS for only a few Cync devices, you should be able to add new devices*
+*If you are using `unbound` and `views:` to selectively route DNS for only a few Cync devices, 
+you should be able to add new devices (as long as you didn't redirect your phone IP!)*
 
 # Testing DNS override
 >[!NOTE] 
