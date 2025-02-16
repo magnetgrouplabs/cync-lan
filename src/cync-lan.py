@@ -637,28 +637,61 @@ class CyncCloudAPI:
 
 
 type_2_str = {
+    5: "Tunable White A19 Bulb",
+    19: "Tunable White A19 Bulb",
     31: "C by GE Full Color A19 Bulb (BTLE only)",
 
-    37: "Direct Connect Dimmer Switch with Motion and Ambient Light - Neutral Required",
+    37: "Direct Connect Dimmer Switch with Motion and Ambient Light",
+
     42: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 18 Inch",
     43: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 24 Inch",
-    55: "Direct Connect Dimmer Switch - No Neutral",
 
+    52: "Direct Connect Switch",
+    55: "Direct Connect Dimmer Switch - No Neutral",
+    58: "Direct Connect Switch - No Neutral",
+    59: "Direct Connect Switch",
+    64: "Direct Connect Indoor Plug",
     68: "Direct Connect Indoor Plug",
 
     113: "Wire-Free Dimmer with White Temperature Switch (BTLE only)",
 
+    131: "Full Color Direct Connect A19 Bulb",
     133: "Full Color Direct Connect LED Light Strip Controller",
     137: "Full Color Direct Connect A19 Bulb",
     138: "Full Color Direct Connect BR30 Floodlight",
     140: "Full Color Direct Connect Outdoor PAR38 Floodlight",
     146: "Full Color Direct Connect Edison ST19 Bulb",
     147: "Full Color Direct Connect Edison G25 Bulb",
-    148: "Direct Connect Dimmable White (2700K) Edison ST19 Bulb",
+    148: "Direct Connect White (2700K) Edison ST19 Bulb",
     152: "Reveal HD+ White (2700K) A19 Bulb",
 
     224: "Direct Connect Thermostat",
 }
+
+DeviceTypes: Dict[str, List[int]] = {
+        "LIGHT": [
+            5,
+            19,
+            31,
+            131,
+            133,
+            137,
+            138,
+            140,
+            146,
+            147,
+            148,
+            152
+        ],
+        "SWITCH": [113],
+        "BATTERY": [113],
+        "DIMMER": [113],
+        "STRIP": [133],
+        "UNDERCABINET": [42, 43],
+        "PLUG": [64, 65, 66, 67, 68],
+        "EDISON": [146, 148],
+        "THERMOSTAT": [224],
+    }
 
 
 class CyncDevice:
@@ -680,7 +713,16 @@ class CyncDevice:
     hvac: Optional[dict] = None
     _online: bool = False
     DeviceTypes: Dict[str, List[int]] = {
-        "BULB": [31, 137, 146, 148],
+        "BULB": [
+            19,
+            31,
+            131,
+            137,
+            146,
+            147,
+            148,
+            152
+        ],
         "SWITCH": [113],
         "BATTERY": [113],
         "DIMMER": [113],
