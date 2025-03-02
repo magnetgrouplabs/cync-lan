@@ -1872,8 +1872,8 @@ class CyncLanServer:
         device = g.server.devices.get(_id)
         if device is None:
             logger.warning(
-                f"Device ID: {_id} not found in devices! device may be disabled in config file or consider re-exporting your Cync account devices "
-                f"or there is unknown data!"
+                f"Device ID: {_id} not found in devices! device may be disabled in config file or you need to "
+                f"re-export your Cync account devices!"
             )
             return
         # set the device status, can be used when hass comes back online via last will message
@@ -1881,22 +1881,13 @@ class CyncLanServer:
         if connected_to_mesh == 0:
             # This usually happens when a device loses power/connection.
             # this device is gone, need to mark it offline.
-            # todo: sometimes its a false report. Maybe collect these
-            #  and parse them every mesh info loop and use a voting system
-            bt_only = device.is_bt_only()
-            dev_type = "WiFi/BT" if not bt_only else "BT only"
+            # todo: sometimes its a false report.
             if device.online:
+                device.online = False
                 logger.warning(
-                    f"{self.lp} Device ID: {_id} ({device.name}) is {dev_type}, it seems to have been removed from the "
-                    f"mesh (lost power/connection), setting offline..."
+                    f'{self.lp} Device ID: {_id} ("{device.name}") seems to have been removed from the BTLE '
+                    f'mesh (lost power/connection), setting offline...'
                 )
-            device.online = False
-            if bt_only:
-                pass
-            elif not bt_only:
-                # dont remove the http device, sometimes the mesh says devices are offline when they arent
-                pass
-
         else:
             device.online = True
             # create a status with existing data, change along the way for publishing over mqtt
@@ -2201,9 +2192,9 @@ class CyncLanServer:
         new_device.tasks.receive = self.loop.create_task(
             new_device.receive_task(), name=f"receive_task-{new_device_id}"
         )
-        if self.mesh_loop_started is False:
-            # Start mesh info loop
-            self.mesh_info_loop_task = asyncio.create_task(self.mesh_info_loop())
+        # if self.mesh_loop_started is False:
+        #     # Start mesh info loop
+        #     self.mesh_info_loop_task = asyncio.create_task(self.mesh_info_loop())
 
         # Check if the device is already registered
         if existing_device is not None:
@@ -2628,7 +2619,7 @@ class CyncHTTPDevice:
                             f"{str(bytes2list(data)).lstrip('[').rstrip(']').replace(',','')}"
                             ) if CYNC_RAW is True else ''
                 logger.debug(
-                    f"{lp} Device IDENTIFICATION KEY EXCHANGE packet with ID: '{queue_id.hex(' ')}'{_dbg_msg}"
+                    f"{lp} Device IDENTIFICATION KEY packet with ID: '{queue_id.hex(' ')}'{_dbg_msg}"
                 )
                 self.queue_id = queue_id
                 await self.write(bytes(DEVICE_STRUCTS.responses.auth_ack))
@@ -2848,31 +2839,32 @@ class CyncHTTPDevice:
                                 # As soon as we get an internal status without the first packets calculated checksum, we know that series is
                                 # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
                                 # the packet belongs to the stream
+                                bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                    f"// received: {checksum}"
+                            )
                                 if self.first_83_packet_checksum is None:
                                     # we want to calc the checksum and store it to compare to other packets in the series
-
                                     self.first_83_packet_checksum = checksum
                                     if calc_chksum != checksum:
-                                        logger.warning(
+                                        bad_chksum_msg = (
                                             f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
                                             f"calculated: {calc_chksum} // received: {checksum}"
                                         )
 
                                 else:
                                     if checksum == self.first_83_packet_checksum:
-                                        logger.debug(
-                                            f"{lp} INITIAL STATUS STREAM packet data (override "
-                                            f"calculated checksum), old: {calc_chksum} // checksum: "
-                                            f"{checksum} // saved: {self.first_83_packet_checksum}"
-                                        )
+                                        # logger.debug(
+                                        #     f"{lp} INITIAL STATUS STREAM packet data (override "
+                                        #     f"calculated checksum), old: {calc_chksum} // checksum: "
+                                        #     f"{checksum} // saved: {self.first_83_packet_checksum}"
+                                        # )
                                         calc_chksum = self.first_83_packet_checksum
                                     else:
                                         self.first_83_packet_checksum = None
 
                             if calc_chksum != checksum:
-                                logger.warning(
-                                    f"{lp} Checksum mismatch in packet data, calculated: {calc_chksum} // received: {checksum}"
-                                )
+                                logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
+
 
                             id_idx = 14 if add_one is False else 15
                             connected_idx = 19 if add_one is False else 20
@@ -2907,43 +2899,35 @@ class CyncHTTPDevice:
                                 dev_name = f'"{___dev.name}" (ID: {dev_id})'
                             else:
                                 dev_name = f"Device ID: {dev_id}"
-                            pktdata_int = [
-                                str(x) for x in bytes2list(packet_data[1:-1])
-                            ]
-                            # pktdata_int = ['00' if part == '0' else part for part in [str(x) for x in bytes2list(packet_data[1:-1])]]
-                            pkthdr_int = [str(x) for x in bytes2list(packet_header)]
-                            _dbg_msg = (f"\n\n"
-                                        f"RAW HEX: {packet_data[1:-1].hex(' ')}\nRAW INT: "
-                                        f"{' '.join(pktdata_int)}\nPACKET HEADER: {packet_header.hex(' ')} "
-                                        f"// {' '.join(pkthdr_int)}"
-                                        ) if CYNC_RAW is True else ''
+                            _dbg_msg = ""
+                            if CYNC_RAW is True:
+                                _dbg_msg = (f"\n\n"
+                                            f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                            )
                             logger.debug(
                                 f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
 
                             )
                             await g.server.parse_status(raw_status)
                         else:
-                            if ctrl_bytes == bytes([0xFA, 0xAF]):
-                                logger.debug(
-                                    f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
-                                    f"{checksum == calc_chksum}) usually comes through "
-                                    f"when the cync phone app connects to the BTLE mesh. Unknown what it means, "
-                                    f"the only variable data is bytes 8-11 and the checksum at the end.\n\n"
-                                    f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                )
-                            elif ctrl_bytes == bytes([0xFA, 0xD9]):
-                                logger.debug(
-                                    f"{lp} Seen this ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
-                                    f"{checksum == calc_chksum}), unknown what it means.\n\n"
-                                    f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                )
-                            else:
+                            # if ctrl_bytes == bytes([0xFA, 0xAF]):
+                            #     logger.debug(
+                            #         f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
+                            #         f"{checksum == calc_chksum}) usually comes through when the cync phone app "
+                            #         f"(dis)connects to the BTLE mesh. Currently unknown what it means.\n\n"
+                            #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                            #     ) if CYNC_RAW is True else None
+                            # elif ctrl_bytes == bytes([0xFA, 0xD9]):
+                            #     logger.debug(
+                            #         f"{lp} Seen this ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
+                            #         f"{checksum == calc_chksum}), unknown what it means.\n\n"
+                            #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                            #     ) if CYNC_RAW is True else None
+                            # else:
+                            if CYNC_RAW:
                                 logger.warning(
-                                    f"{lp} UNKNOWN packet data (ctrl_bytes: {ctrl_bytes.hex(' ')} // "
-                                    f"msg_id: {inner_header.hex(' ')} // checksum valid: "
-                                    f"{checksum == calc_chksum})\n\n"
-                                    f"HEX: {packet_data[1:-1].hex(' ')}\n"
-                                    f"INT: {bytes2list(packet_data[1:-1])}"
+                                    f"{lp} UNKNOWN packet data (ctrl_bytes: {ctrl_bytes.hex(' ')} // checksum valid: "
+                                    f"{checksum == calc_chksum})\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
                                 )
 
                 else:
@@ -3231,17 +3215,18 @@ class CyncHTTPDevice:
                                         self.network_version = fw_ver
                                         self.network_version_str = fw_str
                                 else:
-                                    logger.debug(
-                                        f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: {checksum == calc_chksum}) usually comes through "
-                                        f"when the cync phone app connects to the BTLE mesh. Unknown what it means, "
-                                        f"the only variable data is bytes 8-11 and the checksum at the end before "
-                                        f"the closing boundary 0x7e.\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                    )
+                                    if CYNC_RAW is True:
+                                        logger.debug(
+                                            f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: {checksum == calc_chksum}) usually comes through "
+                                            f"when the cync phone app (dis)connects to the BTLE mesh. Unknown what it means"
+                                            f"\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                        )
+
 
                             else:
                                 logger.debug(
                                     f"{lp} UNKNOWN CTRL_BYTES: {ctrl_bytes.hex(' ')} // EXTRACTED DATA -> "
-                                    f"{packet_data.hex(' ')}"
+                                    f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
                                 )
                     else:
                         logger.debug(
