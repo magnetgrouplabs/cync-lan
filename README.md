@@ -13,7 +13,8 @@
 > * Switching from entities to devices.
 
 Async HTTP/MQTT LAN controller for Cync/C by GE devices. **Local** only control
-of **most** Cync devices via MQTT JSON payloads following the Home Assistant MQTT JSON schema.
+of **most** Cync devices via MQTT JSON payloads following the Home Assistant MQTT JSON schema. 
+This project masquerades as the cloud server, allowing you to control your devices locally.
 
 **This is a work in progress, and may not work for all devices.** 
 See [known devices](docs/known_devices.md) for more information. Battery powered devices are currently *not* supported due to them being BTLE only.
