@@ -2110,7 +2110,7 @@ class CyncLanServer:
             os.kill(os.getpid(), signal.SIGTERM)
         else:
             logger.info(
-                f"{self.lp} Started, bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f"{self.lp} Started (ver. {__version__}), bound to {self.host}:{self.port} - Waiting for connections, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
             try:
