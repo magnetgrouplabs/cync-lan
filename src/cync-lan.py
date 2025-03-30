@@ -26,8 +26,6 @@ import yaml
 
 __version__: str = "0.1.10"
 
-from requests import HTTPError
-
 CYNC_VERSION: str = __version__
 REPO_URL: str = "https://github.com/baudneo/cync-lan"
 DEVICE_LWT_MSG: bytes = b"offline"
@@ -487,7 +485,7 @@ class CyncCloudAPI:
                 and error_data["msg"]
                 and error_data["msg"].lower() == "access-token expired"
             ):
-                raise HTTPError("Access-Token expired, you need to re-authenticate.")
+                raise requests.HTTPError("Access-Token expired, you need to re-authenticate.")
                 # logger.error("Access-Token expired, re-authenticating...")
                 # return self.get_devices(*self.authenticate_2fa())
         return ret
@@ -511,7 +509,7 @@ class CyncCloudAPI:
                 and error_data["msg"]
             ):
                 if error_data["msg"].lower() == "access-token expired":
-                    raise HTTPError("Access-Token expired, you need to re-authenticate.")
+                    raise requests.HTTPError("Access-Token expired, you need to re-authenticate.")
                     # logger.error("Access-Token expired, re-authenticating...")
                     # return self.get_devices(*self.authenticate_2fa())
                 else:
