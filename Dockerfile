@@ -2,7 +2,7 @@ FROM python:3.13-slim-bookworm AS final
 
 #ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV CYNC_VERSION="v0.1.9"
+ENV CYNC_VERSION="v0.1.10"
 
 WORKDIR /root/cync-lan
 
@@ -10,9 +10,10 @@ RUN set -x \
     && apt update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
         openssl git build-essential cmake \
+    && pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir \
-        'setuptools>=69.2.0 wheel>=0.41.2 \
-        pyyaml>=6.0.1 requests>=2.31.0 uvloop>=0.19.0 aiomqtt>=2.3.0' \
+        'setuptools>=69.2.0' 'wheel>=0.41.2' \
+        'pyyaml>=6.0.1' 'requests>=2.31.0' 'uvloop>=0.19.0' 'aiomqtt>=2.3.0' \
       && DEBIAN_FRONTEND=noninteractive apt-get remove -yq git build-essential cmake \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
     && DEBIAN_FRONTEND=noninteractive apt-get clean \
