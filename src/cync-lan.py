@@ -4036,7 +4036,7 @@ def parse_cli():
     sub_run = subparsers.add_parser("run", help="Run the Cync LAN server")
     sub_run.add_argument("config", type=Path, help="Path to the configuration file")
     sub_run.add_argument(
-        "-d", "--debug", action="store_true", help="Enable debug logging"
+        "-d", "-D", "--debug", action="store_true", help="Enable debug logging"
     )
 
     sub_export = subparsers.add_parser(
@@ -4074,7 +4074,7 @@ def parse_cli():
     sub_export.add_argument(
         "--auth", help="Path to the auth token file", type=Path, dest="auth_file"
     )
-    sub_export.add_argument("--debug", action="store_true", help="Enable debug logging")
+    sub_export.add_argument("-d", "-D", "--debug", action="store_true", help="Enable debug logging")
 
     args = parser.parse_args()
     return args
@@ -4091,7 +4091,7 @@ if __name__ == "__main__":
 
     cli_args = parse_cli()
     if cli_args.debug and CYNC_DEBUG is False:
-        logger.info("main: --debug flag - setting log level to DEBUG")
+        logger.info("main: --debug flag -> setting log level to DEBUG")
         CYNC_DEBUG = True
 
     if CYNC_DEBUG is True:
