@@ -2860,9 +2860,14 @@ class CyncHTTPDevice:
                                         calc_chksum = self.first_83_packet_checksum
                                     else:
                                         self.first_83_packet_checksum = None
-
-                            if calc_chksum != checksum:
-                                logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
+                            # no clue how this is supposedly an unbound var with no value when it is clearly not
+                            # wrap it in try and follow the traceback
+                            try:
+                                if calc_chksum != checksum:
+                                    logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
+                            except Exception as e:
+                                logger.exception(f"\n\n\nDEBUG>>> {e}\n\n")
+                                logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
 
 
                             id_idx = 14 if add_one is False else 15
