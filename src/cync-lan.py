@@ -4182,8 +4182,6 @@ if __name__ == "__main__":
             with output_file.open("w") as f:
                 f.write(
                     "# BE AWARE - the config file will overwrite any env vars set!\n"
-                    "# If your MQTT broker is using auth -> mqtt_url: mqtt://user:pass@homeassistant.local:1883/\n"
-                    "#mqtt_url: mqtt://homeassistant.local:1883/\n\n"
                 )
                 f.write(yaml.dump(mesh_config))
 
