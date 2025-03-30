@@ -2832,6 +2832,7 @@ class CyncHTTPDevice:
                             # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
 
                             # LED controller has this pattern
+                            bad_chksum_msg = ""
                             if bytes2list(packet_data[9:12]) == [17, 17, 17]:
                                 # LED controller sends its internal state in a stream
                                 # Only the first packet in the stream has the correct checksum.
@@ -2841,7 +2842,7 @@ class CyncHTTPDevice:
                                 # the packet belongs to the stream
                                 bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
                                     f"// received: {checksum}"
-                            )
+                                )
                                 if self.first_83_packet_checksum is None:
                                     # we want to calc the checksum and store it to compare to other packets in the series
                                     self.first_83_packet_checksum = checksum
