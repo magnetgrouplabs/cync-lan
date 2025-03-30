@@ -37,8 +37,6 @@ services:
     # Debug logging
 #      CYNC_DEBUG: 1
 #      CYNC_RAW_DEBUG: 1
-    # Interval between device online/offline and status check.
-#      CYNC_MESH_CHECK: 30
     networks:
       - cync-lan
 

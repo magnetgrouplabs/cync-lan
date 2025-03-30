@@ -43,8 +43,7 @@ ENV CYNC_MQTT_HOST="homeassistant.local" \
     CYNC_HASS_TOPIC="homeassistant" \
     CYNC_HASS_STATUS_TOPIC="status" \
     CYNC_HASS_BIRTH_MSG="online" \
-    CYNC_HASS_WILL_MSG="offline" \
-    CYNC_MESH_CHECK=30
+    CYNC_HASS_WILL_MSG="offline"
 
 LABEL org.opencontainers.image.authors="baudneo <86508179+baudneo@users.noreply.github.com>"
 LABEL org.opencontainers.image.version="${CYNC_VERSION}"

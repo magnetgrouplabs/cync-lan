@@ -100,7 +100,6 @@ breakdown. Please see the
 | `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will      | `status`                           |
 | `CYNC_HASS_BIRTH_MSG`    | HASS birth message                      | `online`                           |
 | `CYNC_HASS_WILL_MSG`     | HASS will message                       | `offline`                          |
-| `CYNC_MESH_CHECK`        | Interval to check request device state  | `30`                               |
 
 ## Controlling devices
 Devices are controlled by JSON MQTT messages. This was designed to be used 
