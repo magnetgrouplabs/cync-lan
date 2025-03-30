@@ -24,7 +24,7 @@ import requests
 import uvloop
 import yaml
 
-__version__: str = "0.1.10"
+__version__: str = "0.1.11"
 
 CYNC_VERSION: str = __version__
 REPO_URL: str = "https://github.com/baudneo/cync-lan"
