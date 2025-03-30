@@ -4165,9 +4165,9 @@ if __name__ == "__main__":
                     "main: Failed to authenticate, no token or user found. Check auth file or email/OTP"
                 )
 
-            logger.info(
-                f"main: Cync Cloud API auth data => user: {token_user} // token: {access_token}"
-            )
+            # logger.info(
+            #     f"main: Cync Cloud API auth data => user: {token_user} // token: {access_token}"
+            # )
 
             mesh_networks = cloud_api.get_devices(
                 user=token_user, auth_token=access_token
@@ -4179,7 +4179,6 @@ if __name__ == "__main__":
 
             mesh_config = cloud_api.mesh_to_config(mesh_networks)
             output_file: Path = cli_args.output_file
-            logger.info(f"about to dump cloud export to file: {mesh_config = }")
             with output_file.open("w") as f:
                 f.write(
                     "# BE AWARE - the config file will overwrite any env vars set!\n"
