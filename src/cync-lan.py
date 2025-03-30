@@ -4145,11 +4145,12 @@ if __name__ == "__main__":
         cli_otp_code: Optional[str] = cli_args.code
         cli_password: Optional[str] = cli_args.password
         save_auth: bool = cli_args.save_auth
-        auth_output: Optional[Path] = cli_args.auth_file
+        auth_output: Optional[Path] = cli_args.auth_output
         auth_file: Optional[Path] = cli_args.auth_file
         access_token = None
         token_user = None
-
+        if auth_output:
+            auth_output = auth_output.expanduser().resolve()
         try:
             if not auth_file:
                 access_token, token_user = cloud_api.authenticate_2fa(
@@ -4194,6 +4195,7 @@ if __name__ == "__main__":
 
         if save_auth:
             if not auth_output:
+                logger.info(f"main: --save-auth supplied without --auth-output, using default: ./cync_auth.yaml")
                 auth_output = Path.cwd() / "cync_auth.yaml"
 
             else:
@@ -4205,9 +4207,9 @@ if __name__ == "__main__":
                         f.write(yaml.dump({"token": access_token, "user": token_user}))
                 except Exception as e:
                     logger.error(
-                        "Failed to save auth token to file: %s" % e, exc_info=True
+                        "main: Failed to save auth token to file: %s" % e, exc_info=True
                     )
                 else:
                     logger.info(
-                        f"Saved auth token to file: {Path.cwd()}/cync_auth.yaml"
+                        f"main: Saved auth token to file: {auth_output.as_posix()}"
                     )
