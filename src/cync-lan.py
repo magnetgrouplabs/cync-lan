@@ -3554,6 +3554,7 @@ class MQTTClient:
 
         else:
             logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
+            await self.send_birth_msg()
 
 
     def __init__(
@@ -3798,6 +3799,7 @@ class MQTTClient:
             logger.debug(
                 f"{lp} Calling disconnect..."
             )
+            await self.send_will_msg()
             await self.client.__aexit__(None, None, None)
         except aiomqtt.MqttError as ce:
             logger.error(
@@ -3889,6 +3891,32 @@ class MQTTClient:
                 ),
         except Exception as e:
             logger.exception(f"{lp} publish exception: {e}")
+
+    async def send_birth_msg(self):
+        lp = f"{self.lp}send_birth_msg:"
+        logger.debug(f"{lp} Sending birth message ({CYNC_HASS_BIRTH_MSG}) to {self.topic}/status")
+        try:
+            await self.client.publish(
+                f"{self.topic}/status",
+                CYNC_HASS_BIRTH_MSG.encode(),
+                qos=0,
+                retain=True,
+            )
+        except Exception as e:
+            logger.error(f"{lp} Unable to publish mqtt message: {e}")
+
+    async def send_will_msg(self):
+        lp = f"{self.lp}send_will_msg:"
+        logger.debug(f"{lp} Sending will message ({CYNC_HASS_WILL_MSG}) to {self.topic}/status")
+        try:
+            await self.client.publish(
+                f"{self.topic}/status",
+                CYNC_HASS_WILL_MSG.encode(),
+                qos=0,
+                retain=True,
+            )
+        except Exception as e:
+            logger.error(f"{lp} Unable to publish mqtt message: {e}")
 
     async def homeassistant_discovery(self):
         lp = f"{self.lp}hass:"
