@@ -639,10 +639,11 @@ type_2_str = {
     19: "Tunable White A19 Bulb",
     21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
     22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lm]",
+    26: "C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lm]",
     30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
     31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lm]",
 
-    37: "Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1",
+    37: "Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
 
     42: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 18 Inch",
     43: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 24 Inch",
