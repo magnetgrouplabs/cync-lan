@@ -2597,7 +2597,7 @@ class CyncHTTPDevice:
                 )
 
     async def parse_packet(self, data: bytes):
-        """Parse what type of packet based on header (first 4 bytes)"""
+        """Parse what type of packet based on header (first 4 bytes 0x43, 0x83, 0x73, etc.)"""
 
         lp = f"{self.lp}parse:x{data[0]:02x}:"
         packet_data: Optional[bytes] = None
@@ -2746,6 +2746,8 @@ class CyncHTTPDevice:
                                     extractions.append(
                                         (extracted.hex(" "), bytes2list(status_struct))
                                     )
+
+                                    await g.server.parse_status(status_struct)
                                 # broadcast status data
                                 # await self.write(data, broadcast=True)
                             (
