@@ -2760,9 +2760,10 @@ class CyncHTTPDevice:
                             )
                         except IndexError:
                             # The device will only send a max of 1kb of data, if the message is longer than 1kb the remainder is sent in the next read
-                            logger.debug(
-                                f"{lp} IndexError extracting status struct (expected)"
-                            )
+                            # logger.debug(
+                            #     f"{lp} IndexError extracting status struct (expected)"
+                            # )
+                            pass
                         except Exception as e:
                             logger.error(f"{lp} EXCEPTION: {e}")
                 # Its one of those queue id/msg id pings? 0x43 00 00 00 ww xx xx xx xx yy yy yy
@@ -2804,13 +2805,6 @@ class CyncHTTPDevice:
                             self.network_version_str = fw_str
 
                     elif packet_data[0] == DATA_BOUNDARY:
-                        # device internal status. state can be off and brightness set to a non 0.
-                        # signifies what brightness when state = on, meaning don't rely on brightness for on/off.
-
-                        # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
-                        #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
-                        #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
-
                         # checksum is 2nd last byte, last byte is 0x7e
                         checksum = packet_data[-2]
                         inner_header = packet_data[1:6]
@@ -2819,31 +2813,72 @@ class CyncHTTPDevice:
                         inner_data = packet_data[6:-2]
                         calc_chksum = sum(inner_data) % 256
 
-                        # This has the HTTP devices internal status of all devices in BTLE mesh.
+                        # Most devices only report their own state using 0x83, however the LED light strip controllers also report other device state data
+                        # over 0x83.
                         # This data can be wrong! sometimes reports wrong state and the RGB colors are slightly different from each device.
                         # todo: need to not parse this data if we just issued a command or we do like mesh info and create a voting system
                         if ctrl_bytes == bytes([0xFA, 0xDB]):
-                            add_one = False
-                            if len(inner_data) == 22:
-                                pass
-                            elif len(inner_data) == 23:
-                                add_one = True
+                            extra_ctrl_bytes = packet_data[7]
+                            if extra_ctrl_bytes == 0x13:
+                                # fa db 13 is internal status
+                                # device internal status. state can be off and brightness set to a non 0.
+                                # signifies what brightness when state = on, meaning don't rely on brightness for on/off.
+
+                                # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
+                                #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
+                                #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
+                                id_idx = 14
+                                connected_idx = 19
+                                state_idx = 20
+                                bri_idx = 21
+                                tmp_idx = 22
+                                r_idx = 23
+                                g_idx = 24
+                                b_idx = 25
+                                dev_id = packet_data[id_idx]
+                                state = packet_data[state_idx]
+                                bri = packet_data[bri_idx]
+                                tmp = packet_data[tmp_idx]
+                                _red = packet_data[r_idx]
+                                _green = packet_data[g_idx]
+                                _blue = packet_data[b_idx]
+                                connected_to_mesh = packet_data[connected_idx]
+                                raw_status: bytes = bytes(
+                                    [
+                                        dev_id,
+                                        state,
+                                        bri,
+                                        tmp,
+                                        _red,
+                                        _green,
+                                        _blue,
+                                        connected_to_mesh,
+                                    ]
+                                )
+                                ___dev = g.server.devices.get(dev_id)
+                                if ___dev:
+                                    dev_name = f'"{___dev.name}" (ID: {dev_id})'
+                                else:
+                                    dev_name = f"Device ID: {dev_id}"
+                                _dbg_msg = ""
+                                if CYNC_RAW is True:
+                                    _dbg_msg = (f"\n\n"
+                                                f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                                )
                                 logger.debug(
-                                    f"{lp} Adding one to index for packet data as "
-                                    f"inner_data length = 23 and revising checksum calculation"
+                                    f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
+
                                 )
-                            else:
-                                logger.warning(
-                                    f"{lp} Unknown packet INNER data length: {len(inner_data)}"
-                                )
-                            if add_one is False:
-                                calc_chksum = sum(inner_data) % 256
-                            else:
+                                await g.server.parse_status(raw_status)
+
+                            elif extra_ctrl_bytes == 0x14:
+                                # unknown what this data is, log it
                                 chksum_inner_data = list(inner_data)
                                 chksum_inner_data.pop(4)
                                 calc_chksum = sum(chksum_inner_data) % 256
-                            # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
+                                logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
 
+                            # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                             # LED controller has this pattern
                             bad_chksum_msg = ""
                             if bytes2list(packet_data[9:12]) == [17, 17, 17]:
@@ -2879,55 +2914,15 @@ class CyncHTTPDevice:
                             # wrap it in try and follow the traceback
                             try:
                                 if calc_chksum != checksum:
-                                    logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
+                                    if not bad_chksum_msg:
+                                        bad_chksum_msg = (
+                                            f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                            f"// received: {checksum}"
+                                        )
+                                    logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
                             except Exception as e:
                                 logger.exception(f"\n\n\nDEBUG>>> {e}\n\n")
-                                logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}")
-
-
-                            id_idx = 14 if add_one is False else 15
-                            connected_idx = 19 if add_one is False else 20
-                            state_idx = 20 if add_one is False else 21
-                            bri_idx = 21 if add_one is False else 22
-                            tmp_idx = 22 if add_one is False else 23
-                            r_idx = 23 if add_one is False else 24
-                            g_idx = 24 if add_one is False else 25
-                            b_idx = 25 if add_one is False else 26
-                            dev_id = packet_data[id_idx]
-                            state = packet_data[state_idx]
-                            bri = packet_data[bri_idx]
-                            tmp = packet_data[tmp_idx]
-                            _red = packet_data[r_idx]
-                            _green = packet_data[g_idx]
-                            _blue = packet_data[b_idx]
-                            connected_to_mesh = packet_data[connected_idx]
-                            raw_status: bytes = bytes(
-                                [
-                                    dev_id,
-                                    state,
-                                    bri,
-                                    tmp,
-                                    _red,
-                                    _green,
-                                    _blue,
-                                    connected_to_mesh,
-                                ]
-                            )
-                            ___dev = g.server.devices.get(dev_id)
-                            if ___dev:
-                                dev_name = f'"{___dev.name}" (ID: {dev_id})'
-                            else:
-                                dev_name = f"Device ID: {dev_id}"
-                            _dbg_msg = ""
-                            if CYNC_RAW is True:
-                                _dbg_msg = (f"\n\n"
-                                            f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                            )
-                            logger.debug(
-                                f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
-
-                            )
-                            await g.server.parse_status(raw_status)
+                                logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
                         else:
                             # if ctrl_bytes == bytes([0xFA, 0xAF]):
                             #     logger.debug(
