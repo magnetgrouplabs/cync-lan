@@ -2870,59 +2870,60 @@ class CyncHTTPDevice:
 
                                 )
                                 await g.server.parse_status(raw_status)
+                                # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
+                                # LED controller has this pattern
+                                bad_chksum_msg = ""
+                                if bytes2list(packet_data[9:12]) == [17, 17, 17]:
+                                    # LED controller sends its internal state in a stream
+                                    # Only the first packet in the stream has the correct checksum.
+                                    # All following 0x83 internal status packets for this stream will have the same checksum as the first packet.
+                                    # As soon as we get an internal status without the first packets calculated checksum, we know that series is
+                                    # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
+                                    # the packet belongs to the stream
+                                    bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                                      f"// received: {checksum}"
+                                                      )
+                                    if self.first_83_packet_checksum is None:
+                                        # we want to calc the checksum and store it to compare to other packets in the series
+                                        self.first_83_packet_checksum = checksum
+                                        if calc_chksum != checksum:
+                                            bad_chksum_msg = (
+                                                f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
+                                                f"calculated: {calc_chksum} // received: {checksum}"
+                                            )
+
+                                    else:
+                                        if checksum == self.first_83_packet_checksum:
+                                            # logger.debug(
+                                            #     f"{lp} INITIAL STATUS STREAM packet data (override "
+                                            #     f"calculated checksum), old: {calc_chksum} // checksum: "
+                                            #     f"{checksum} // saved: {self.first_83_packet_checksum}"
+                                            # )
+                                            calc_chksum = self.first_83_packet_checksum
+                                        else:
+                                            self.first_83_packet_checksum = None
+                                # no clue how this is supposedly an unbound var with no value when it is clearly not
+                                # wrap it in try and follow the traceback
+                                try:
+                                    if calc_chksum != checksum:
+                                        if not bad_chksum_msg:
+                                            bad_chksum_msg = (
+                                                f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                                f"// received: {checksum}"
+                                            )
+                                        logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
+                                except Exception as e:
+                                    logger.exception(f"\n\n\nDEBUG>>> {e}\n\n")
+                                    logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
 
                             elif extra_ctrl_bytes == 0x14:
                                 # unknown what this data is, log it
+                                # seems to be sent when the cync app is connecting?
                                 chksum_inner_data = list(inner_data)
                                 chksum_inner_data.pop(4)
                                 calc_chksum = sum(chksum_inner_data) % 256
-                                logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
+                                # logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
 
-                            # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
-                            # LED controller has this pattern
-                            bad_chksum_msg = ""
-                            if bytes2list(packet_data[9:12]) == [17, 17, 17]:
-                                # LED controller sends its internal state in a stream
-                                # Only the first packet in the stream has the correct checksum.
-                                # All following 0x83 internal status packets for this stream will have the same checksum as the first packet.
-                                # As soon as we get an internal status without the first packets calculated checksum, we know that series is
-                                # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
-                                # the packet belongs to the stream
-                                bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
-                                    f"// received: {checksum}"
-                                )
-                                if self.first_83_packet_checksum is None:
-                                    # we want to calc the checksum and store it to compare to other packets in the series
-                                    self.first_83_packet_checksum = checksum
-                                    if calc_chksum != checksum:
-                                        bad_chksum_msg = (
-                                            f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
-                                            f"calculated: {calc_chksum} // received: {checksum}"
-                                        )
-
-                                else:
-                                    if checksum == self.first_83_packet_checksum:
-                                        # logger.debug(
-                                        #     f"{lp} INITIAL STATUS STREAM packet data (override "
-                                        #     f"calculated checksum), old: {calc_chksum} // checksum: "
-                                        #     f"{checksum} // saved: {self.first_83_packet_checksum}"
-                                        # )
-                                        calc_chksum = self.first_83_packet_checksum
-                                    else:
-                                        self.first_83_packet_checksum = None
-                            # no clue how this is supposedly an unbound var with no value when it is clearly not
-                            # wrap it in try and follow the traceback
-                            try:
-                                if calc_chksum != checksum:
-                                    if not bad_chksum_msg:
-                                        bad_chksum_msg = (
-                                            f"{lp} Checksum mismatch, calculated: {calc_chksum} "
-                                            f"// received: {checksum}"
-                                        )
-                                    logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
-                            except Exception as e:
-                                logger.exception(f"\n\n\nDEBUG>>> {e}\n\n")
-                                logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
                         else:
                             # if ctrl_bytes == bytes([0xFA, 0xAF]):
                             #     logger.debug(
