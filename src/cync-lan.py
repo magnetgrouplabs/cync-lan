@@ -2740,7 +2740,11 @@ class CyncHTTPDevice:
                             for i in range(0, packet_length, struct_len):
                                 extracted = packet_data[i : i + struct_len]
                                 if extracted:
-                                    status_struct = extracted[3:11]
+                                    # hack so online devices stop being reported as offline
+                                    # this may cause issues with cync setups that ONLY use indoor
+                                    # plugs as the btle to http bridge, as they dont broadcast status data using 0x83
+                                    status_struct = extracted[3:10]
+                                    status_struct + b'\x01'
                                     # 14 00 10 01 00 00 64 00 00 00 01 15 15 00 00 00 00 00 00
                                     # // [1, 0, 0, 100, 0, 0, 0, 1]
                                     extractions.append(
