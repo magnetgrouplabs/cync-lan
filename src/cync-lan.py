@@ -637,12 +637,19 @@ class CyncCloudAPI:
 type_2_str = {
     5: "Tunable White A19 Bulb",
     19: "Tunable White A19 Bulb",
-    31: "C by GE Full Color A19 Bulb (BTLE only)",
+    21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
+    22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lm]",
+    30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
+    31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lm]",
 
-    37: "Direct Connect Dimmer Switch with Motion and Ambient Light",
+    37: "Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1",
 
     42: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 18 Inch",
     43: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 24 Inch",
+
+    48: "C by GE (C Start Smart) Direct Connect Switch [CSWDMBLBWF1]",
+    49: "C by GE (C Start Smart) Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+
 
     52: "Direct Connect Switch",
     55: "Direct Connect Dimmer Switch - No Neutral",
@@ -656,8 +663,8 @@ type_2_str = {
     131: "Full Color Direct Connect A19 Bulb",
     133: "Full Color Direct Connect LED Light Strip Controller",
     137: "Full Color Direct Connect A19 Bulb",
-    138: "Full Color Direct Connect BR30 Floodlight",
-    140: "Full Color Direct Connect Outdoor PAR38 Floodlight",
+    138: "Full Color Direct Connect BR30 Floodlight [CLEDR309CD1-CDN1P 750 LM]",
+    140: "Full Color Direct Connect Outdoor PAR38 Floodlight [CLEDP3815CD1/BSS/CDN 1300 LM]",
     146: "Full Color Direct Connect Edison ST19 Bulb",
     147: "Full Color Direct Connect Edison G25 Bulb",
     148: "Direct Connect White (2700K) Edison ST19 Bulb",
@@ -670,7 +677,12 @@ DeviceTypes: Dict[str, List[int]] = {
         "LIGHT": [
             5,
             19,
+            21,
+            22,
+            30,
             31,
+            42,
+            43,
             131,
             133,
             137,
@@ -761,7 +773,7 @@ class CyncDevice:
             28,
             29,
             30,
-            31,  # BTLE only bulb?
+            31,
             32,
             33,
             34,
