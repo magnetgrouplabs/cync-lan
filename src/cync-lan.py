@@ -671,6 +671,8 @@ type_2_str = {
     148: "Direct Connect White (2700K) Edison ST19 Bulb",
     152: "Reveal HD+ White (2700K) A19 Bulb",
 
+    169: "Reveal HD+ Full Color 4 Inch Wafer Smart LED Downlight",
+
     224: "Direct Connect Thermostat",
 }
 
@@ -692,7 +694,8 @@ DeviceTypes: Dict[str, List[int]] = {
             146,
             147,
             148,
-            152
+            152,
+            169,
         ],
         "SWITCH": [113],
         "BATTERY": [113],
@@ -732,7 +735,8 @@ class CyncDevice:
             146,
             147,
             148,
-            152
+            152,
+            169
         ],
         "SWITCH": [113],
         "BATTERY": [113],
@@ -846,6 +850,7 @@ class CyncDevice:
             163,
             164,
             165,
+            169,
         ],
         "BRIGHTNESS": [
             1,
@@ -927,6 +932,7 @@ class CyncDevice:
             163,
             164,
             165,
+            169,
         ],
         "COLORTEMP": [
             5,
@@ -987,6 +993,7 @@ class CyncDevice:
             163,
             164,
             165,
+            169,
         ],
         "RGB": [
             6,
@@ -1026,6 +1033,7 @@ class CyncDevice:
             163,
             164,
             165,
+            169,
         ],
         "MOTION": [37, 49, 54],
         "AMBIENT_LIGHT": [37, 49, 54],
@@ -1092,6 +1100,7 @@ class CyncDevice:
             163,
             164,
             165,
+            169,
         ],
         "PLUG": [64, 65, 66, 67, 68],
         "SWITCH": [113, 37],
