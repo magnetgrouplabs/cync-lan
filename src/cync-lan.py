@@ -3630,11 +3630,15 @@ class MQTTClient:
         # hardcode for now
         self.cync_mink: int = 2000
         self.cync_maxk: int = 7000
-        self.cync_min_mired: int = int(1e6 / self.cync_maxk + 0.5)
-        self.cync_max_mired: int = int(1e6 / self.cync_mink + 0.5)
-
-        self.hass_minct: int = int(1e6 / 5000 + 0.5)
-        self.hass_maxct: int = int(1e6 / self.cync_mink + 0.5)
+        
+        # instead of converting mireds, when sending the light configuration
+        # we can send 'color_temp_kelvin: True in the JSON to use kelvin instead
+        # self.cync_min_mired: int = int(1e6 / self.cync_maxk + 0.5)
+        # self.cync_max_mired: int = int(1e6 / self.cync_mink + 0.5)
+        #
+        # # self.hass_minct: int = int(1e6 / self.cync_maxk + 0.5)
+        # self.hass_minct: int = int(1e6 / 5000 + 0.5)
+        # self.hass_maxct: int = int(1e6 / self.cync_mink + 0.5)
         g.mqtt = self
 
     async def start(self):
@@ -3731,7 +3735,7 @@ class MQTTClient:
                                 )
                                 cmd_tg.create_task(
                                     device.set_temperature(
-                                        self.hassct_to_tlct(
+                                        self.kelvin2cync(
                                             int(json_data["color_temp"])
                                         )
                                     )
@@ -3891,7 +3895,7 @@ class MQTTClient:
                     0 <= device_status.temperature <= 100
                 ):
                     mqtt_dev_state["color_mode"] = "color_temp"
-                    mqtt_dev_state["color_temp"] = self.tlct_to_hassct(
+                    mqtt_dev_state["color_temp"] = self.cync2kelvin(
                         device_status.temperature
                     )
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
@@ -3977,6 +3981,7 @@ class MQTTClient:
                     "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
                     "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
                     "pl_avail": "online",
+                    'color_temp_kelvin': True,
                     "pl_not_avail": "offline",
                     "state_on": "ON",
                     "state_off": "OFF",
@@ -3997,8 +4002,8 @@ class MQTTClient:
                         dev_registry_conf["supported_color_modes"] = []
                         if device.supports_temperature:
                             dev_registry_conf["supported_color_modes"].append("color_temp")
-                            dev_registry_conf["max_mireds"] = self.hass_maxct
-                            dev_registry_conf["min_mireds"] = self.hass_minct
+                            dev_registry_conf["max_kelvin"] = self.cync_maxk
+                            dev_registry_conf["min_kelvin"] = self.cync_mink
                         if device.supports_rgb:
                             dev_registry_conf["supported_color_modes"].append("rgb")
 
@@ -4019,26 +4024,32 @@ class MQTTClient:
             logger.error(f"{lp} Discovery failed: {e}", exc_info=True)
         logger.debug(f"{lp} Discovery complete")
 
-    def hassct_to_tlct(self, ct):
-        # convert HASS mired range to percent range
-        # Cync light is 2000K (1%) to 7000K (100%)
-        # Cync light is cync_max_mired (1%) to cync_min_mired (100%)
-        scale = 99 / (self.cync_max_mired - self.cync_min_mired)
-        return 100 - int(scale * (ct - self.cync_min_mired))
 
-    def tlct_to_hassct(self, ct):
-        """
-        Convert Cync percent range (1-100) to HASS mired range
-        Cync light is 2000K (1%) to 7000K (100%)
-        Cync light is cync_max_mired (1%) to cync_min_mired (100%)
-        """
-        if ct == 0:
-            return self.cync_max_mired
-        elif ct > 100:
-            return self.cync_min_mired
+    def kelvin2cync(self, k):
+        """Convert Kelvin value to Cync white temp (0-100) with step size: 1"""
+        max_k = self.cync_maxk
+        min_k = self.cync_mink
+        if k < min_k:
+            return 0
+        elif k > max_k:
+            return 100
+        scale = 100 / (max_k - min_k)
+        ret = int(scale * (k - min_k))
+        # logger.debug(f"{self.lp} Converting Kelvin: {k} using scale: {scale} (max_k={max_k}, min_k={min_k}) -> return value: {ret}")
+        return ret
 
-        scale = (self.cync_min_mired - self.cync_max_mired) / 99
-        return self.cync_max_mired + int(scale * (ct - 1))
+    def cync2kelvin(self, ct):
+        """Convert Cync white temp (0-100) to Kelvin value"""
+        max_k = self.cync_maxk
+        min_k = self.cync_mink
+        if ct <= 0:
+            return min_k
+        elif ct >= 100:
+            return max_k
+        scale = (max_k - min_k) / 100
+        ret = min_k + int(scale * ct)
+        # logger.debug(f"{self.lp} Converting Cync temp: {ct} using scale: {scale} (max_k={max_k}, min_k={min_k}) -> return value: {ret}")
+        return ret
 
 
 def parse_cli():
