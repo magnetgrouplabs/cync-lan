@@ -34,7 +34,7 @@ wget https://raw.githubusercontent.com/baudneo/cync-lan/python/create_certs.sh
 bash ./create_certs.sh
 
 # install python deps
-pip install pyyaml requests uvloop wheel aiomqtt
+pip install 'pyyaml==6.0.2' 'requests>=2.32.3' 'uvloop>=0.21.0' 'aiomqtt==2.3.0'
 
 # wget file
 wget https://raw.githubusercontent.com/baudneo/cync-lan/python/src/cync-lan.py
