@@ -3543,9 +3543,12 @@ class MQTTClient:
         device_uuid = f"{device.home_id}-{device_id}"
         # logger.debug(f"{lp} Publishing availability: {availability}")
         # check if client is online, if not, create a method that will
-        _ = await self.client.publish(
-            f"{self.topic}/availability/{device_uuid}", availability, qos=0
-        )
+        try:
+            _ = await self.client.publish(
+                f"{self.topic}/availability/{device_uuid}", availability, qos=0
+            )
+        except aiomqtt.exceptions.MqttCodeError as mqtt_exc:
+            logger.warning(f"{lp} MQTTCodeError: {mqtt_exc}")
 
     async def connect(self):
         lp = f"{self.lp}connect:"
