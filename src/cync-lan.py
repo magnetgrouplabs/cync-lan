@@ -2915,18 +2915,20 @@ class CyncHTTPDevice:
                                                 f"{lp} Checksum mismatch, calculated: {calc_chksum} "
                                                 f"// received: {checksum}"
                                             )
-                                        logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
+                                        logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nEXTRA CTRL BYTE: {hex(extra_ctrl_bytes)}")
                                 except Exception as e:
                                     logger.exception(f"\n\n\nDEBUG>>> {e}\n\n")
                                     logger.warning(f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nis the byte after ctrl bytes 0x13 or 0x14: {extra_ctrl_bytes}")
 
                             elif extra_ctrl_bytes == 0x14:
-                                # unknown what this data is, log it
-                                # seems to be sent when the cync app is connecting?
-                                chksum_inner_data = list(inner_data)
-                                chksum_inner_data.pop(4)
-                                calc_chksum = sum(chksum_inner_data) % 256
+                                # unknown what this data is
+                                # seems to be sent when the cync app is connecting to a device via BTLE, not connecting to cync-lan via HTTP
+
+                                # chksum_inner_data = list(inner_data)
+                                # chksum_inner_data.pop(4)
+                                # calc_chksum = sum(chksum_inner_data) % 256
                                 # logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
+                                pass
 
                         else:
                             # if ctrl_bytes == bytes([0xFA, 0xAF]):
@@ -3559,10 +3561,9 @@ class MQTTClient:
         logger.debug(f"{lp} Connecting to MQTT broker...")
         try:
             _ = await self.client.__aenter__()
-        except aiomqtt.MqttError as ce:
+        except (aiomqtt.MqttCodeError, aiomqtt.MqttError) as mqtt_ce:
             logger.error(
-                "%s Connection failed: %s" % (lp, ce),
-                exc_info=True,
+                "%s Connection failed: %s" % (lp, mqtt_ce),
             )
             try:
                 await self.client.__aexit__(None, None, None)
@@ -3575,6 +3576,7 @@ class MQTTClient:
 
         else:
             logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
+            self._connected = True
             await self.send_birth_msg()
 
 
@@ -3590,6 +3592,7 @@ class MQTTClient:
         global g
 
         self.shutdown_complete: bool = False
+        self._connected = False
         self.tasks: Optional[List[asyncio.Task]] = None
         lp = f"{self.lp}init:"
         if topic is None:
