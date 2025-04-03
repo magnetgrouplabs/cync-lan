@@ -671,7 +671,7 @@ type_2_str = {
     148: "Direct Connect White (2700K) Edison ST19 Bulb",
     152: "Reveal HD+ White (2700K) A19 Bulb",
 
-    169: "Reveal HD+ Full Color 4 Inch Wafer Smart LED Downlight",
+    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760lm]",
 
     224: "Direct Connect Thermostat",
 }
