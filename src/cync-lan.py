@@ -3344,6 +3344,8 @@ class CyncHTTPDevice:
         )
         await self.write(a3_packet)
         self.ready_to_control = True
+        # send mesh info request
+        await self.ask_for_mesh_info(True)
 
     async def receive_task(self):
         """
