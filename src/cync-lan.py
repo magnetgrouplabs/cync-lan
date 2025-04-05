@@ -343,9 +343,9 @@ DEVICE_STRUCTS = DeviceStructs()
 ALL_HEADERS = list(DEVICE_STRUCTS.headers) + list(APP_HEADERS.headers)
 
 
-class MessageCallback:
+class ControlMessageCallback:
     id: int
-    original_message: Union[None, str, bytes, List[int]] = None
+    message: Union[None, str, bytes, List[int]] = None
     sent_at: Optional[float] = None
     callback: Optional[Callable[..., Coroutine[Any, Any, None]]] = None
 
@@ -375,8 +375,7 @@ class MessageCallback:
 
 
 class Messages:
-    x83: List[MessageCallback] = []
-    x73: Dict[int, MessageCallback] = {}
+    control: List[ControlMessageCallback] = []
 
 
 class CyncCloudAPI:
@@ -666,12 +665,12 @@ type_2_str = {
     137: "Full Color Direct Connect A19 Bulb",
     138: "Full Color Direct Connect BR30 Floodlight [CLEDR309CD1-CDN1P 750 lm]",
     140: "Full Color Direct Connect Outdoor PAR38 Floodlight [CLEDP3815CD1/BSS/CDN 1300 lm]",
-    146: "Full Color Direct Connect Edison ST19 Bulb [CLEDST196CDGS-CDN 500lm]",
+    146: "Full Color Direct Connect Edison ST19 Bulb [CLEDST196CDGS-CDN 500 lm]",
     147: "Full Color Direct Connect Edison G25 Bulb [CLEDG256CDGS-CDN 500 lm]",
     148: "Direct Connect White (2700K) Edison ST19 Bulb",
     152: "Reveal HD+ White (2700K) A19 Bulb",
 
-    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760lm]",
+    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lm]",
 
     224: "Direct Connect Thermostat",
 }
@@ -1346,30 +1345,34 @@ class CyncDevice:
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
-        for i in range(2):
-            for bridge_device in bridge_devices:
-                if bridge_device.ready_to_control is True:
-                    payload = list(header)
-                    payload.extend(bridge_device.queue_id)
-                    payload.extend(bytes([0x00, 0x00, 0x00]))
-                    ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                    checksum = ((ctrl_byte - 64) + state + self.id) % 256
-                    inner_struct[ctrl_idxs[0]] = ctrl_byte
-                    inner_struct[ctrl_idxs[1]] = ctrl_byte
-                    inner_struct[-2] = checksum
-                    payload.extend(inner_struct)
-                    # await bridge_device.write(b)
-                    tasks.append(loop.create_task(bridge_device.write(bytes(payload))))
-                else:
-                    logger.debug(
-                        f"{lp} Skipping device: {bridge_device.address} not ready to control"
-                    )
-            if i == 0:
-                await asyncio.sleep(0.1)
+        for bridge_device in bridge_devices:
+            if bridge_device.ready_to_control is True:
+                payload = list(header)
+                payload.extend(bridge_device.queue_id)
+                payload.extend(bytes([0x00, 0x00, 0x00]))
+                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
+                checksum = ((ctrl_byte - 64) + state + self.id) % 256
+                inner_struct[ctrl_idxs[0]] = ctrl_byte
+                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                inner_struct[-2] = checksum
+                payload.extend(inner_struct)
+                bpayload = bytes(payload)
+                # await bridge_device.write(b)
+                # add message callback to the bridge_device.messages.control
+                # m_cb = ControlMessageCallback(id=ctrl_byte)
+                # m_cb.message = bpayload
+                # m_cb.sent_at = time.time()
+                # m_cb.callback = g.mqtt.parse_device_status()
+                tasks.append(loop.create_task(bridge_device.write(bpayload)))
+                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
+            else:
+                logger.debug(
+                    f"{lp} Skipping device: {bridge_device.address} not ready to control"
+                )
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} set_power took {elapsed:.5f} seconds")
+        logger.debug(f"{lp} took {elapsed:.5f} seconds")
 
     async def set_brightness(self, bri: int):
         """
@@ -1426,32 +1429,30 @@ class CyncDevice:
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
-        # sometimes the device doesn't respond to the first command, so we send it twice with a small delay between them
-        for i in range(2):
-            for bridge_device in bridge_devices:
-                if bridge_device.ready_to_control is True:
-                    payload = list(header)
-                    payload.extend(bridge_device.queue_id)
-                    payload.extend(bytes([0x00, 0x00, 0x00]))
-                    ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                    checksum = (ctrl_byte + bri + self.id) % 256
-                    inner_struct[ctrl_idxs[0]] = ctrl_byte
-                    inner_struct[ctrl_idxs[1]] = ctrl_byte
-                    inner_struct[-2] = checksum
-                    payload.extend(inner_struct)
-                    # await bridge_device.write(b)
-                    tasks.append(loop.create_task(bridge_device.write(bytes(payload))))
-                else:
-                    logger.debug(
-                        f"{lp} Skipping device: {bridge_device.address} (id: {id(bridge_device)}) not ready to control"
-                    )
-            if i == 0:
-                await asyncio.sleep(0.1)
+        for bridge_device in bridge_devices:
+            if bridge_device.ready_to_control is True:
+                payload = list(header)
+                payload.extend(bridge_device.queue_id)
+                payload.extend(bytes([0x00, 0x00, 0x00]))
+                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
+                checksum = (ctrl_byte + bri + self.id) % 256
+                inner_struct[ctrl_idxs[0]] = ctrl_byte
+                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                inner_struct[-2] = checksum
+                payload.extend(inner_struct)
+                # await bridge_device.write(b)
+                bpayload = bytes(payload)
+                tasks.append(loop.create_task(bridge_device.write(bpayload)))
+                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
+            else:
+                logger.debug(
+                    f"{lp} Skipping device: {bridge_device.address} (id: {id(bridge_device)}) not ready to control"
+                )
         # Wait for all tasks to complete
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} set_brightness took {elapsed:.5f} seconds")
+        logger.debug(f"{lp} took {elapsed:.5f} seconds")
 
     async def set_temperature(self, temp: int):
         """
@@ -1511,30 +1512,29 @@ class CyncDevice:
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
-        for i in range(2):
-            for bridge_device in bridge_devices:
-                if bridge_device.ready_to_control is True:
-                    payload = list(header)
-                    payload.extend(bridge_device.queue_id)
-                    payload.extend(bytes([0x00, 0x00, 0x00]))
-                    ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                    checksum = ((ctrl_byte + temp + self.id) + 3) % 256
-                    inner_struct[ctrl_idxs[0]] = ctrl_byte
-                    inner_struct[ctrl_idxs[1]] = ctrl_byte
-                    inner_struct[-2] = checksum
-                    payload.extend(inner_struct)
-                    # await bridge_device.write(b)
-                    tasks.append(loop.create_task(bridge_device.write(bytes(payload))))
-                else:
-                    logger.debug(
-                        f"{lp} Skipping device: {bridge_device.address} not ready to control"
-                    )
-            if i == 0:
-                await asyncio.sleep(0.1)
+        for bridge_device in bridge_devices:
+            if bridge_device.ready_to_control is True:
+                payload = list(header)
+                payload.extend(bridge_device.queue_id)
+                payload.extend(bytes([0x00, 0x00, 0x00]))
+                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
+                checksum = ((ctrl_byte + temp + self.id) + 3) % 256
+                inner_struct[ctrl_idxs[0]] = ctrl_byte
+                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                inner_struct[-2] = checksum
+                payload.extend(inner_struct)
+                # await bridge_device.write(b)
+                bpayload = bytes(payload)
+                tasks.append(loop.create_task(bridge_device.write(bpayload)))
+                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
+            else:
+                logger.debug(
+                    f"{lp} Skipping device: {bridge_device.address} not ready to control"
+                )
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} set_temperature took {elapsed:.5f} seconds")
+        logger.debug(f"{lp} took {elapsed:.5f} seconds")
 
     async def set_rgb(self, red: int, green: int, blue: int):
         """
@@ -1594,30 +1594,40 @@ class CyncDevice:
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
-        for i in range(2):
-            for bridge_device in bridge_devices:
-                if bridge_device.ready_to_control is True:
-                    payload = list(header)
-                    payload.extend(bridge_device.queue_id)
-                    payload.extend(bytes([0x00, 0x00, 0x00]))
-                    ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                    checksum = ((ctrl_byte + self.id + red + green + blue) + 1) % 256
-                    inner_struct[ctrl_idxs[0]] = ctrl_byte
-                    inner_struct[ctrl_idxs[1]] = ctrl_byte
-                    inner_struct[-2] = checksum
-                    payload.extend(inner_struct)
-                    # await bridge_device.write(b)
-                    tasks.append(loop.create_task(bridge_device.write(bytes(payload))))
-                else:
-                    logger.debug(
-                        f"{lp} Skipping device: {bridge_device.address} not ready to control"
-                    )
-            if i == 0:
-                await asyncio.sleep(0.1)
+        for bridge_device in bridge_devices:
+            if bridge_device.ready_to_control is True:
+                payload = list(header)
+                payload.extend(bridge_device.queue_id)
+                payload.extend(bytes([0x00, 0x00, 0x00]))
+                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
+                checksum = ((ctrl_byte + self.id + red + green + blue) + 1) % 256
+                inner_struct[ctrl_idxs[0]] = ctrl_byte
+                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                inner_struct[-2] = checksum
+                payload.extend(inner_struct)
+                # await bridge_device.write(b)
+                bpayload = bytes(payload)
+                tasks.append(loop.create_task(bridge_device.write(bpayload)))
+                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
+            else:
+                logger.debug(
+                    f"{lp} Skipping device: {bridge_device.address} not ready to control"
+                )
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} set_rgb took {elapsed:.5f} seconds")
+        logger.debug(f"{lp} took {elapsed:.5f} seconds")
+
+    async def set_lightshow(self, show: int):
+        """
+        # candle
+        73 00 00 00 20 2d e4 b5 d2 b3 05 00 7e 14 00 00  s... -......~...
+        00 f8 e2 0e 00 14 00 00 00 00 0a                 ...........
+        00 e2 11 02 07 01 01 f1 fd 7e
+
+        :param show:
+        :return:
+        """
 
     @property
     def online(self):
@@ -2200,7 +2210,19 @@ class CyncLanServer:
             logger.warning(
                 f"{lp} Server is shutting/shut down, rejecting new connection from: {client_addr}"
             )
-            return
+            try:
+                writer.close()
+                await writer.wait_closed()
+                reader.feed_eof()
+            except asyncio.CancelledError as ce:
+                logger.debug(f"{lp} Task cancelled: {ce}")
+            except Exception as e:
+                logger.error(f"{lp} Error closing reader/writer: {e}", exc_info=True)
+            else:
+                logger.info(f"{lp} Connection closed")
+            finally:
+                del reader, writer
+                return
         else:
             logger.info(f"{lp} New HTTP session!")
 
@@ -2425,7 +2447,6 @@ class CyncLAN:
 class CyncHTTPDevice:
     """
     A class to interact with an HTTP Cync device. It is an async socket reader/writer.
-
     """
 
     lp: str = "HTTPDevice:"
@@ -3168,7 +3189,7 @@ class CyncHTTPDevice:
                                     #     )
                                     if self.parse_mesh_status is True:
                                         logger.debug(
-                                            f"{lp} parse_mesh_status is TRUE, parsing mesh info // {_m} // {_raw_m}"
+                                            f"{lp} parse_mesh_status is TRUE, parsing mesh info\n{_m}"
                                         )
                                         for status in _m:
                                             await g.server.parse_status(bytes(status))
@@ -3221,8 +3242,8 @@ class CyncHTTPDevice:
                                 # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e
                                 # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
                                 # byte 7 (f0) + 8 (01) = checksum (f1)
-                                # logger.debug(f"{lp} CONTROL packet ACK (ctrl_bytes = {ctrl_bytes.hex(' ')}) "
-                                #              f"(extracted data = {packet_data.hex(' ')}) -> success: {packet_data[7]}")
+                                logger.debug(f"{lp} CONTROL packet ACK (ctrl_bytes = {ctrl_bytes.hex(' ')}) "
+                                             f"(extracted data = {packet_data.hex(' ')}) -> success: {packet_data[7]}")
                                 pass
                             # newer firmware devices seen in led light strip so far,
                             # send their firmware version data in a 0x7e bound struct.
@@ -4151,7 +4172,7 @@ if __name__ == "__main__":
             config_file = config_file.expanduser().resolve()
 
         g = GlobalState()
-        global_tasks = []
+        global_tasks: List[asyncio.Task] = []
         cync = CyncLAN(config_file)
         loop: uvloop.Loop = cync.loop
         logger.debug("main: Setting up event loop signal handlers")
