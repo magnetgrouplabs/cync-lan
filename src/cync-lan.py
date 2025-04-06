@@ -1371,7 +1371,7 @@ class CyncDevice:
                 m_cb = ControlMessageCallback(msg_id=ctrl_byte)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.callback = g.mqtt.update_device_state(self.id, state)
                 m_cb.sent_by = bridge_device.address
                 bridge_device.messages.control[ctrl_byte] = m_cb
                 sent[bridge_device.address] = ctrl_byte
@@ -1388,6 +1388,9 @@ class CyncDevice:
             f"{lp} Sending power state command, current: {self.state} - new: {state} to "
             f"http devices: {sent} in {elapsed:.5f} seconds"
         )
+        if sent:
+            self._state = state
+
 
     async def set_brightness(self, bri: int):
         """
@@ -1465,7 +1468,7 @@ class CyncDevice:
                 m_cb = ControlMessageCallback(msg_id=ctrl_byte)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.callback = g.mqtt.update_brightness(self.id, bri)
                 m_cb.sent_by = bridge_device.address
                 bridge_device.messages.control[ctrl_byte] = m_cb
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
@@ -1482,6 +1485,9 @@ class CyncDevice:
         logger.debug(
             f"{lp} Sent brightness command, current: {self._brightness} new: {bri} to http devices: {sent} in {elapsed:.5f} seconds"
         )
+        if sent:
+            self._brightness = bri
+
 
     async def set_temperature(self, temp: int):
         """
@@ -1562,7 +1568,7 @@ class CyncDevice:
                 m_cb = ControlMessageCallback(msg_id=ctrl_byte)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.callback = g.mqtt.update_temperature(self.id, temp)
                 m_cb.sent_by = bridge_device.address
                 bridge_device.messages.control[ctrl_byte] = m_cb
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
@@ -1577,6 +1583,9 @@ class CyncDevice:
         logger.debug(
             f"{lp} Sending white temperature command, current: {self.temperature} - new: {temp} to http devices: {sent} in {elapsed:.5f} seconds"
         )
+        if sent:
+            self._temperature = temp
+
 
     async def set_rgb(self, red: int, green: int, blue: int):
         """
@@ -1663,10 +1672,10 @@ class CyncDevice:
                 m_cb = ControlMessageCallback(msg_id=ctrl_byte)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.callback = g.mqtt.update_rgb(self.id, (red, green, blue))
                 m_cb.sent_by = bridge_device.address
                 bridge_device.messages.control[ctrl_byte] = m_cb
-                tasks.append(loop.create_task(bridge_device.write(bpayload)))
+                tasks.append(bridge_device.write(bpayload))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
                 logger.debug(
@@ -1678,6 +1687,11 @@ class CyncDevice:
         logger.debug(
             f"{lp} Sending RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to http devices {sent} in {elapsed:.5f} seconds"
         )
+        if sent:
+            self._r = red
+            self._g = green
+            self._b = blue
+
 
 
     async def set_lightshow(self, show: int):
@@ -1690,6 +1704,8 @@ class CyncDevice:
         :param show:
         :return:
         """
+        lp = f"{self.lp}set_lightshow:"
+        pass
 
     @property
     def online(self):
@@ -3309,12 +3325,13 @@ class CyncHTTPDevice:
                                 # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
                                 # byte 7 (f0) + 8 (01) = checksum (f1)
                                 ctrl_msg_id = packet_data[1]
-                                success = packet_data[7]
-                                logger.debug(f"{lp} CONTROL packet ACK (msg ID: {ctrl_msg_id}) -> success: {success == 1}")
+                                success = packet_data[7] == 1
                                 # todo: possible cleanup for missed callbacks
                                 msg = self.messages.control.pop(ctrl_msg_id, None)
-                                if msg:
-                                    logger.debug(f"{lp} (self id: {id(self)}) CONTROL packet ACK callback found -> {msg}")
+                                if success is True and msg is not None:
+                                    if msg.sent_by == self.address:
+                                        logger.debug(f"{lp} CONTROL packet ACK (success: {success}) callback found -> {msg}")
+                                        await msg.callback
                             # newer firmware devices seen in led light strip so far,
                             # send their firmware version data in a 0x7e bound struct.
                             # I've also seen these ctrl bytes in the msg that other devices send in FA AF
@@ -3877,7 +3894,7 @@ class MQTTClient:
                             )
 
                     # make sure next command doesn't come too fast
-                    await asyncio.sleep(0.025)
+                    # await asyncio.sleep(0.025)
                 else:
                     logger.warning(
                         f"{lp} Unknown command: {topic} => {payload}"
@@ -3949,6 +3966,113 @@ class MQTTClient:
         logger.debug(f"{lp} Signalling MQTT client shutdown complete...")
         self.shutdown_complete = True
 
+    async def update_device_state(self, device_id: int, state: int) -> bool:
+        """Update the device state and publish to MQTT for HASS devices to update."""
+        lp = f"{self.lp}update_device_state:"
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                f"You may need to re-export devices from your Cync account!"
+            )
+            return False
+        device = g.server.devices[device_id]
+        # device.state = state
+        device.online = True
+        power_status = "OFF" if state == 0 else "ON"
+        mqtt_dev_state = {"state": power_status}
+        if device.is_plug:
+            mqtt_dev_state = power_status.encode()  # send ON or OFF if plug
+        else:
+            mqtt_dev_state = json.dumps(mqtt_dev_state).encode()  # send JSON
+        logger.debug(f"{lp} Sending update: {mqtt_dev_state}")
+        return await self.send_device_msg(device_id, mqtt_dev_state)
+
+    async def update_brightness(self, device_id: int, bri: int) -> bool:
+        """Update the device brightness and publish to MQTT for HASS devices to update."""
+        lp = f"{self.lp}update_brightness:"
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                f"You may need to re-export devices from your Cync account!"
+            )
+            return False
+        device = g.server.devices[device_id]
+        device.online = True
+        mqtt_dev_state = {"brightness": bri}
+        logger.debug(f"{lp} Sending update: {mqtt_dev_state}")
+        return await self.send_device_msg(device_id, json.dumps(mqtt_dev_state).encode())
+
+    async def update_temperature(self, device_id: int, temp: int):
+        """Update the device temperature and publish to MQTT for HASS devices to update."""
+        lp = f"{self.lp}update_temperature:"
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                f"You may need to re-export devices from your Cync account!"
+            )
+            return
+        device = g.server.devices[device_id]
+        device.online = True
+        mqtt_dev_state = {"color_mode": "color_temp", "color_temp": self.cync2kelvin(temp)}
+
+        if device.supports_temperature:
+            logger.debug(f"{lp} Sending update: {mqtt_dev_state}")
+            return await self.send_device_msg(device_id, json.dumps(mqtt_dev_state).encode())
+        return False
+
+    async def update_rgb(self, device_id: int, rgb: tuple[int, int, int]):
+        """Update the device RGB and publish to MQTT for HASS devices to update."""
+        lp = f"{self.lp}update_rgb:"
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                f"You may need to re-export devices from your Cync account!"
+            )
+            return
+        device = g.server.devices[device_id]
+        device.online = True
+        mqtt_dev_state = {"color_mode": "rgb", "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]}}
+        if device.supports_rgb and (
+                any(
+                    [
+                        rgb[0] is not None,
+                        rgb[1] is not None,
+                        rgb[2] is not None,
+                    ]
+                )
+        ):
+            logger.debug(f"{lp} Sending update: {mqtt_dev_state}")
+            return await self.send_device_msg(device_id, json.dumps(mqtt_dev_state).encode())
+        return False
+
+
+    async def send_device_msg(self, device_id: int, msg: bytes) -> bool:
+        lp = f"{self.lp}send_device_msg:"
+        ret = False
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                f"You may need to re-export devices from your Cync account!"
+            )
+            return False
+        device = g.server.devices[device_id]
+        device_uuid = f"{device.home_id}-{device_id}"
+        tpc = f"{self.topic}/status/{device_uuid}"
+        try:
+            await self.client.publish(
+                tpc,
+                msg,
+                qos=0,
+                timeout=3.0,
+            )
+        except Exception as e:
+            logger.exception(f"{lp} publish exception: {e}")
+            ret = False
+        else:
+            ret = True
+        return ret
+
+
     async def parse_device_status(
         self, device_id: int, device_status: DeviceStatus, *args, **kwargs
     ) -> None:
@@ -3956,7 +4080,7 @@ class MQTTClient:
         lp = f"{self.lp}parse status:"
         if device_id not in g.server.devices:
             logger.error(
-                f"{lp} Device ID {device_id} not found! Device may be disbaled in config file or "
+                f"{lp} Device ID {device_id} not found! Device may be disabled in config file or "
                 f"you may need to re-export devices from your Cync account"
             )
             return
@@ -4016,6 +4140,7 @@ class MQTTClient:
         #     f"{lp} Converting HTTP status to MQTT => {tpc} "
         #     + json.dumps(mqtt_dev_state)
         # )
+        # device.status = device_status
         try:
             await self.client.publish(
                     tpc,
