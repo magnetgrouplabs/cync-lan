@@ -1305,6 +1305,10 @@ class CyncDevice:
         if state not in (0, 1):
             logger.error(f"{lp} Invalid state! must be 0 or 1")
             return
+        elif state == self.state:
+            # to stop flooding the network with commands
+            logger.debug(f"{lp} Device already in power state {state}, skipping...")
+            return
         header = [0x73, 0x00, 0x00, 0x00, 0x1F]
         inner_struct = [
             0x7E,
@@ -1338,13 +1342,10 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(3, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        logger.debug(
-            f"{lp} Sending power state command, current: {self.state} - new: {state} to "
-            f"http devices: {str_devices}"
-        )
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
+        sent = {}
         for bridge_device in bridge_devices:
             if bridge_device.ready_to_control is True:
                 payload = list(header)
@@ -1372,7 +1373,10 @@ class CyncDevice:
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} took {elapsed:.5f} seconds")
+        logger.debug(
+            f"{lp} Sending power state command, current: {self.state} - new: {state} to "
+            f"http devices: {sent} in {elapsed:.5f} seconds"
+        )
 
     async def set_brightness(self, bri: int):
         """
@@ -1387,6 +1391,12 @@ class CyncDevice:
         27 ff ff ff ff 45 7e
         """
         lp = f"{self.lp}set_brightness:"
+        if bri < 0 or bri > 100:
+            logger.error(f"{lp} Invalid brightness! must be 0-100")
+            return
+        elif bri == self._brightness:
+            logger.debug(f"{lp} Device already in brightness {bri}, skipping...")
+            return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
@@ -1423,9 +1433,7 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(3, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        logger.debug(
-            f"{lp} Sending brightness command, current: {self._brightness} new: {bri} to http devices: {str_devices}"
-        )
+        sent = {}
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
@@ -1442,6 +1450,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
+                sent[bridge_device.address] = ctrl_byte
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1452,7 +1461,9 @@ class CyncDevice:
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} took {elapsed:.5f} seconds")
+        logger.debug(
+            f"{lp} Sent brightness command, current: {self._brightness} new: {bri} to http devices: {sent} in {elapsed:.5f} seconds"
+        )
 
     async def set_temperature(self, temp: int):
         """
@@ -1470,6 +1481,12 @@ class CyncDevice:
             0x36 0x48 0x07 = 54 + 72 + 7 = 133 (needs + 3)
         """
         lp = f"{self.lp}set_temperature:"
+        if temp < 0 or (temp > 100 and temp != 255):
+            logger.error(f"{lp} Invalid temperature! must be 0-100")
+            return
+        elif temp == self.temperature:
+            logger.debug(f"{lp} Device already in temperature {temp}, skipping...")
+            return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
@@ -1506,12 +1523,10 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(3, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        logger.debug(
-            f"{lp} Sending white temperature command, current: {self.temperature} - new: {temp} to http devices: {str_devices}"
-        )
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
+        sent = {}
         for bridge_device in bridge_devices:
             if bridge_device.ready_to_control is True:
                 payload = list(header)
@@ -1525,6 +1540,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
+                sent[bridge_device.address] = ctrl_byte
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1534,7 +1550,9 @@ class CyncDevice:
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} took {elapsed:.5f} seconds")
+        logger.debug(
+            f"{lp} Sending white temperature command, current: {self.temperature} - new: {temp} to http devices: {sent} in {elapsed:.5f} seconds"
+        )
 
     async def set_rgb(self, red: int, green: int, blue: int):
         """
@@ -1552,6 +1570,18 @@ class CyncDevice:
             2b 07 00 fb ff = 43 + 7 + 0 + 251 + 255 = 556 (needs + 1)
         """
         lp = f"{self.lp}set_rgb:"
+        if red < 0 or red > 255:
+            logger.error(f"{lp} Invalid red value! must be 0-255")
+            return
+        if green < 0 or green > 255:
+            logger.error(f"{lp} Invalid green value! must be 0-255")
+            return
+        if blue < 0 or blue > 255:
+            logger.error(f"{lp} Invalid blue value! must be 0-255")
+            return
+        if red == self._r and green == self._g and blue == self._b:
+            logger.debug(f"{lp} Device already in RGB color {red}, {green}, {blue}, skipping...")
+            return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
@@ -1588,12 +1618,10 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(3, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        logger.debug(
-            f"{lp} Sending RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to http devices {str_devices}"
-        )
         tasks: List[Optional[asyncio.Task]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
+        sent = {}
         for bridge_device in bridge_devices:
             if bridge_device.ready_to_control is True:
                 payload = list(header)
@@ -1607,6 +1635,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
+                sent[bridge_device.address] = ctrl_byte
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1616,7 +1645,10 @@ class CyncDevice:
         if tasks:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
-        logger.debug(f"{lp} took {elapsed:.5f} seconds")
+        logger.debug(
+            f"{lp} Sending RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to http devices {sent} in {elapsed:.5f} seconds"
+        )
+
 
     async def set_lightshow(self, show: int):
         """
@@ -3189,10 +3221,14 @@ class CyncHTTPDevice:
                                     #     )
                                     if self.parse_mesh_status is True:
                                         logger.debug(
-                                            f"{lp} parse_mesh_status is TRUE, parsing mesh info\n{_m}"
+                                            f"{lp} All device status request data\n{_m}"
                                         )
-                                        for status in _m:
-                                            await g.server.parse_status(bytes(status))
+                                        # for status in _m:
+                                        #     await g.server.parse_status(bytes(status))
+                                        await asyncio.gather(*[
+                                            g.server.parse_status(bytes(status))
+                                            for status in _m
+                                        ])
 
                                     mesh_info["status"] = _m
                                     mesh_info["id_from"] = self.id
@@ -3340,17 +3376,21 @@ class CyncHTTPDevice:
                 0x7E,
             ]
         )
-        # logger.debug(f"{lp} Asking device for BT mesh info:\nBYTES: {mesh_info_data}\nHEX: {mesh_info_data.hex(' ')}\n"
-        #              f"INT: {bytes2list(mesh_info_data)}") if CYNC_RAW is True else None
+        _rdmsg = ""
+        if CYNC_RAW is True:
+            _rdmsg = f"\nBYTES: {mesh_info_data}\nHEX: {mesh_info_data.hex(' ')}\nINT: {bytes2list(mesh_info_data)}"
+        logger.debug(f"{lp} Requesting ALL device(s) status{_rdmsg}")
+        if parse is True:
+            self.parse_mesh_status = True
         try:
-            if parse is True:
-                self.parse_mesh_status = True
             await self.write(mesh_info_data)
         except TimeoutError as to_exc:
-            logger.error(f"{lp} asking for mesh info timed out, likely powered off")
+            logger.error(f"{lp} Requesting ALL device(s) status timed out, likely powered off")
+            self.parse_mesh_status = False
             raise to_exc
         except Exception as e:
             logger.error(f"{lp} EXCEPTION: {e}", exc_info=True)
+            self.parse_mesh_status = False
 
     async def send_a3(self, q_id: bytes):
         a3_packet = bytes([0xA3, 0x00, 0x00, 0x00, 0x07])
@@ -3366,6 +3406,7 @@ class CyncHTTPDevice:
         await self.write(a3_packet)
         self.ready_to_control = True
         # send mesh info request
+        await asyncio.sleep(1.5)
         await self.ask_for_mesh_info(True)
 
     async def receive_task(self):
