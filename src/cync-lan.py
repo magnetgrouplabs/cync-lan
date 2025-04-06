@@ -348,12 +348,16 @@ class ControlMessageCallback:
     message: Union[None, str, bytes, List[int]] = None
     sent_at: Optional[float] = None
     callback: Optional[Callable[..., Coroutine[Any, Any, None]]] = None
+    sent_by: Optional[str] = None
 
     args: List = []
     kwargs: Dict = {}
 
     def __str__(self):
-        return f"MessageCallback ID: {self.id} sent at: {datetime.datetime.fromtimestamp(self.sent_at)}"
+        return f"MessageCallback ID: {self.id} sent at: {datetime.datetime.fromtimestamp(self.sent_at)} by: {self.sent_by}"
+
+    def __repr__(self):
+        return self.__str__()
 
     def __eq__(self, other: int):
         return self.id == other
@@ -375,7 +379,11 @@ class ControlMessageCallback:
 
 
 class Messages:
-    control: List[ControlMessageCallback] = []
+    control: Dict[int, ControlMessageCallback]
+
+    def __init__(self):
+        self.control = dict()
+        self.lp = "Messages"
 
 
 class CyncCloudAPI:
@@ -1360,10 +1368,13 @@ class CyncDevice:
                 bpayload = bytes(payload)
                 # await bridge_device.write(b)
                 # add message callback to the bridge_device.messages.control
-                # m_cb = ControlMessageCallback(id=ctrl_byte)
-                # m_cb.message = bpayload
-                # m_cb.sent_at = time.time()
-                # m_cb.callback = g.mqtt.parse_device_status()
+                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                m_cb.message = bpayload
+                m_cb.sent_at = time.time()
+                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.sent_by = bridge_device.address
+                bridge_device.messages.control[ctrl_byte] = m_cb
+                sent[bridge_device.address] = ctrl_byte
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1451,8 +1462,15 @@ class CyncDevice:
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = ctrl_byte
+                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                m_cb.message = bpayload
+                m_cb.sent_at = time.time()
+                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.sent_by = bridge_device.address
+                bridge_device.messages.control[ctrl_byte] = m_cb
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
-                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
+                # logger.debug(f"{lp} Sending via IP: {bridge_device.address} CTRL CALLBACK: {m_cb}")
+                # logger.debug(f"DBG>>> {bridge_device.messages.control}")
             else:
                 logger.debug(
                     f"{lp} Skipping device: {bridge_device.address} (id: {id(bridge_device)}) not ready to control"
@@ -1541,6 +1559,12 @@ class CyncDevice:
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = ctrl_byte
+                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                m_cb.message = bpayload
+                m_cb.sent_at = time.time()
+                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.sent_by = bridge_device.address
+                bridge_device.messages.control[ctrl_byte] = m_cb
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1636,6 +1660,12 @@ class CyncDevice:
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = ctrl_byte
+                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                m_cb.message = bpayload
+                m_cb.sent_at = time.time()
+                m_cb.callback = "g.mqtt.parse_device_status()"
+                m_cb.sent_by = bridge_device.address
+                bridge_device.messages.control[ctrl_byte] = m_cb
                 tasks.append(loop.create_task(bridge_device.write(bpayload)))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -3278,9 +3308,13 @@ class CyncHTTPDevice:
                                 # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e
                                 # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
                                 # byte 7 (f0) + 8 (01) = checksum (f1)
-                                logger.debug(f"{lp} CONTROL packet ACK (ctrl_bytes = {ctrl_bytes.hex(' ')}) "
-                                             f"(extracted data = {packet_data.hex(' ')}) -> success: {packet_data[7]}")
-                                pass
+                                ctrl_msg_id = packet_data[1]
+                                success = packet_data[7]
+                                logger.debug(f"{lp} CONTROL packet ACK (msg ID: {ctrl_msg_id}) -> success: {success == 1}")
+                                # todo: possible cleanup for missed callbacks
+                                msg = self.messages.control.pop(ctrl_msg_id, None)
+                                if msg:
+                                    logger.debug(f"{lp} (self id: {id(self)}) CONTROL packet ACK callback found -> {msg}")
                             # newer firmware devices seen in led light strip so far,
                             # send their firmware version data in a 0x7e bound struct.
                             # I've also seen these ctrl bytes in the msg that other devices send in FA AF
