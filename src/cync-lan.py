@@ -2515,10 +2515,12 @@ class CyncLAN:
         self.server = CyncLanServer(CYNC_HOST, CYNC_PORT, CYNC_CERT, CYNC_KEY)
         self.server.devices = self.cfg_devices
 
-        async with asyncio.TaskGroup() as tg:
-            server_task = tg.create_task(self.server.start(), name="server_start")
-            mqtt_task = tg.create_task(self.mqtt_client.start(), name="mqtt_start")
-            global_tasks.extend([server_task, mqtt_task])
+        server_task = asyncio.create_task(self.server.start(), name="server_start")
+        mqtt_task = asyncio.create_task(self.mqtt_client.start(), name="mqtt_start")
+        tasks = [server_task, mqtt_task]
+        global_tasks.extend(tasks)
+        await asyncio.gather(*tasks)
+
 
     def stop(self):
         global global_tasks
@@ -3845,75 +3847,66 @@ class MQTTClient:
             )
             _topic = topic.value.split("/")
             # Messages sent to the cync topic
+            tasks = []
             if _topic[0] == CYNC_TOPIC:
                 if _topic[1] == "set":
-                    async with asyncio.TaskGroup() as cmd_tg:
-                        device_id = int(_topic[2].split("-")[1])
-                        if device_id not in g.server.devices:
-                            logger.warning(
-                                f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted or added any "
-                                f"devices recently?"
+                    device_id = int(_topic[2].split("-")[1])
+                    if device_id not in g.server.devices:
+                        logger.warning(
+                            f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted or added any "
+                            f"devices recently?"
+                        )
+                        continue
+                    device = g.server.devices[device_id]
+                    if payload.startswith(b"{"):
+                        try:
+                            json_data = json.loads(payload)
+                        except Exception as e:
+                            logger.error(
+                                "%s bad json message: {%s} EXCEPTION => %s"
+                                % (lp, payload, e)
                             )
                             continue
-                        device = g.server.devices[device_id]
-                        if payload.startswith(b"{"):
-                            try:
-                                json_data = json.loads(payload)
-                            except Exception as e:
-                                logger.error(
-                                    "%s bad json message: {%s} EXCEPTION => %s"
-                                    % (lp, payload, e)
-                                )
-                                continue
 
-                            if "state" in json_data and "brightness" not in json_data:
-                                if json_data["state"].upper() == "ON":
-                                    logger.debug(f"{lp} setting power to ON")
-                                    cmd_tg.create_task(device.set_power(1))
-                                else:
-                                    logger.debug(f"{lp} setting power to OFF")
-                                    cmd_tg.create_task(device.set_power(0))
-                            if "brightness" in json_data:
-                                lum = int(json_data["brightness"])
-                                logger.debug(
-                                    f"{lp} setting brightness to: {lum}"
-                                )
-                                # if 5 > lum > 0:
-                                #     lum = 5
-                                cmd_tg.create_task(device.set_brightness(lum))
-                            if "color_temp" in json_data:
-                                logger.debug(
-                                    f"{lp} setting white color temp to: {json_data['color_temp']}"
-                                )
-                                cmd_tg.create_task(
-                                    device.set_temperature(
-                                        self.kelvin2cync(
-                                            int(json_data["color_temp"])
-                                        )
+                        if "state" in json_data and "brightness" not in json_data:
+                            if json_data["state"].upper() == "ON":
+                                tasks.append(device.set_power(1))
+                            else:
+                                tasks.append(device.set_power(0))
+                        if "brightness" in json_data:
+                            lum = int(json_data["brightness"])
+                            # if 5 > lum > 0:
+                            #     lum = 5
+                            tasks.append(device.set_brightness(lum))
+                        if "color_temp" in json_data:
+                            tasks.append(
+                                device.set_temperature(
+                                    self.kelvin2cync(
+                                        int(json_data["color_temp"])
                                     )
                                 )
-                            elif "color" in json_data:
-                                color = []
-                                for rgb in ("r", "g", "b"):
-                                    if rgb in json_data["color"]:
-                                        color.append(
-                                            int(json_data["color"][rgb])
-                                        )
-                                    else:
-                                        color.append(0)
-                                logger.debug(f"{lp} setting RGB to: {color}")
-                                cmd_tg.create_task(device.set_rgb(*color))
-                        # handle non json OFF/ON payloads
-                        elif payload.upper() == b"ON":
-                            logger.debug(f"{lp} setting power to ON (non-JSON)")
-                            cmd_tg.create_task(device.set_power(1))
-                        elif payload.upper() == b"OFF":
-                            logger.debug(f"{lp} setting power to OFF (non-JSON)")
-                            cmd_tg.create_task(device.set_power(0))
-                        else:
-                            logger.warning(
-                                f"{lp} Unknown payload: {payload}, skipping..."
                             )
+                        elif "color" in json_data:
+                            color = []
+                            for rgb in ("r", "g", "b"):
+                                if rgb in json_data["color"]:
+                                    color.append(
+                                        int(json_data["color"][rgb])
+                                    )
+                                else:
+                                    color.append(0)
+                            tasks.append(device.set_rgb(*color))
+                    # handle non json OFF/ON payloads
+                    elif payload.upper() == b"ON":
+                        logger.debug(f"{lp} setting power to ON (non-JSON)")
+                        tasks.append(device.set_power(1))
+                    elif payload.upper() == b"OFF":
+                        logger.debug(f"{lp} setting power to OFF (non-JSON)")
+                        tasks.append(device.set_power(0))
+                    else:
+                        logger.warning(
+                            f"{lp} Unknown payload: {payload}, skipping..."
+                        )
 
                     # make sure next command doesn't come too fast
                     # await asyncio.sleep(0.025)
@@ -3921,6 +3914,8 @@ class MQTTClient:
                     logger.warning(
                         f"{lp} Unknown command: {topic} => {payload}"
                     )
+                if tasks:
+                    await asyncio.gather(*tasks)
             # messages sent to the hass mqtt topic
             elif _topic[0] == self.ha_topic:
                 # birth / will
