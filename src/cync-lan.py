@@ -3794,8 +3794,8 @@ class MQTTClient:
                     for device_id, device in g.server.devices.items():
                         await self.pub_online(device_id, False)
                 elif itr > 1:
-                    # set the device online/offline and set its status
                     tasks = []
+                    # set the device online/offline and set its status
                     for device in g.server.devices.values():
                         tasks.append(self.pub_online(device.id, device.online))
                         tasks.append(
@@ -3811,8 +3811,8 @@ class MQTTClient:
                                 ),
                             )
                         )
-                if tasks:
-                    await asyncio.gather(*tasks)
+                    if tasks:
+                        await asyncio.gather(*tasks)
                 logger.debug(f"{lp} Starting MQTT listener...")
                 lp: str = f"{self.lp}rcv:"
                 topics = [
