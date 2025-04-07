@@ -2909,174 +2909,174 @@ class CyncHTTPDevice:
             elif pkt_type == 0x83:
                 if self.is_app is True:
                     logger.debug(f"{lp} device is app, skipping packet...")
-                    return
-                # When the device sends a packet starting with 0x83, data is wrapped in 0x7e.
-                # firmware version is sent without 0x7e boundaries
-                if packet_data is not None:
-                    # logger.debug(f"{lp} Extracted BOUND data ({len(bytes(packet_data))} bytes) => {packet_data.hex(' ')}")
-
-                    # 0x83 inner struct - not always bound by 0x7e (firmware response doesn't have starting boundary, has ending boundary 0x7e)
-                    # firmware info, data len = 30 (0x32), fw starts idx 23-27, 20-22 fw type (86 01 0x)
-                    #  {83 00 00 00 32} {[39 87 c8 57] [00 03 00]} {00 00 00 00  ....29..W.......
-                    #  00 fa 00 20 00 00 00 00 00 00 00 00 ea 00 00 00  ... ............
-                    #  86 01 01 31[idx=23 packet_data] 30 33 36 31 00 00 00 00 00 00 00 00  ...10361........
-                    #  00 00 00 00 00 [8d] [7e]}                             ......~
-                    # firmware packet may only be sent on startup / network reconnection
-
-                    if packet_data[0] == 0x00:
-                        fw_type, fw_ver, fw_str = parse_unbound_firmware_version(
-                            packet_data, lp
-                        )
-                        if fw_type == "device":
-                            self.version = fw_ver
-                            self.version_str = fw_str
-                        else:
-                            self.network_version = fw_ver
-                            self.network_version_str = fw_str
-
-                    elif packet_data[0] == DATA_BOUNDARY:
-                        # checksum is 2nd last byte, last byte is 0x7e
-                        checksum = packet_data[-2]
-                        inner_header = packet_data[1:6]
-                        ctrl_bytes = packet_data[5:7]
-                        # removes checksum byte and 0x7e
-                        inner_data = packet_data[6:-2]
-                        calc_chksum = sum(inner_data) % 256
-
-                        # Most devices only report their own state using 0x83, however the LED light strip controllers also report other device state data
-                        # over 0x83.
-                        # This data can be wrong! sometimes reports wrong state and the RGB colors are slightly different from each device.
-                        # todo: need to not parse this data if we just issued a command or we do like mesh info and create a voting system
-                        if ctrl_bytes == bytes([0xFA, 0xDB]):
-                            extra_ctrl_bytes = packet_data[7]
-                            if extra_ctrl_bytes == 0x13:
-                                # fa db 13 is internal status
-                                # device internal status. state can be off and brightness set to a non 0.
-                                # signifies what brightness when state = on, meaning don't rely on brightness for on/off.
-
-                                # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
-                                #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
-                                #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
-                                id_idx = 14
-                                connected_idx = 19
-                                state_idx = 20
-                                bri_idx = 21
-                                tmp_idx = 22
-                                r_idx = 23
-                                g_idx = 24
-                                b_idx = 25
-                                dev_id = packet_data[id_idx]
-                                state = packet_data[state_idx]
-                                bri = packet_data[bri_idx]
-                                tmp = packet_data[tmp_idx]
-                                _red = packet_data[r_idx]
-                                _green = packet_data[g_idx]
-                                _blue = packet_data[b_idx]
-                                connected_to_mesh = packet_data[connected_idx]
-                                raw_status: bytes = bytes(
-                                    [
-                                        dev_id,
-                                        state,
-                                        bri,
-                                        tmp,
-                                        _red,
-                                        _green,
-                                        _blue,
-                                        connected_to_mesh,
-                                    ]
-                                )
-                                ___dev = g.server.devices.get(dev_id)
-                                if ___dev:
-                                    dev_name = f'"{___dev.name}" (ID: {dev_id})'
-                                else:
-                                    dev_name = f"Device ID: {dev_id}"
-                                _dbg_msg = ""
-                                if CYNC_RAW is True:
-                                    _dbg_msg = (f"\n\n"
-                                                f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                                )
-                                logger.debug(
-                                    f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
-
-                                )
-                                await g.server.parse_status(raw_status)
-                                # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
-                                # LED controller has this pattern
-                                bad_chksum_msg = ""
-                                if bytes2list(packet_data[9:12]) == [17, 17, 17]:
-                                    # LED controller sends its internal state in a stream
-                                    # Only the first packet in the stream has the correct checksum.
-                                    # All following 0x83 internal status packets for this stream will have the same checksum as the first packet.
-                                    # As soon as we get an internal status without the first packets calculated checksum, we know that series is
-                                    # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
-                                    # the packet belongs to the stream
-                                    bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
-                                                      f"// received: {checksum}"
-                                                      )
-                                    if self.first_83_packet_checksum is None:
-                                        # we want to calc the checksum and store it to compare to other packets in the series
-                                        self.first_83_packet_checksum = checksum
-                                        if calc_chksum != checksum:
-                                            bad_chksum_msg = (
-                                                f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
-                                                f"calculated: {calc_chksum} // received: {checksum}"
-                                            )
-
-                                    else:
-                                        if checksum == self.first_83_packet_checksum:
-                                            # logger.debug(
-                                            #     f"{lp} INITIAL STATUS STREAM packet data (override "
-                                            #     f"calculated checksum), old: {calc_chksum} // checksum: "
-                                            #     f"{checksum} // saved: {self.first_83_packet_checksum}"
-                                            # )
-                                            calc_chksum = self.first_83_packet_checksum
-                                        else:
-                                            self.first_83_packet_checksum = None
-
-                                if calc_chksum != checksum:
-                                    if not bad_chksum_msg:
-                                        bad_chksum_msg = (
-                                            f"{lp} Checksum mismatch, calculated: {calc_chksum} "
-                                            f"// received: {checksum}"
-                                        )
-                                    # logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nEXTRA CTRL BYTE: {hex(extra_ctrl_bytes)}")
-
-                            elif extra_ctrl_bytes == 0x14:
-                                # unknown what this data is
-                                # seems to be sent when the cync app is connecting to a device via BTLE, not connecting to cync-lan via HTTP
-
-                                # chksum_inner_data = list(inner_data)
-                                # chksum_inner_data.pop(4)
-                                # calc_chksum = sum(chksum_inner_data) % 256
-                                # logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
-                                pass
-
-                        else:
-                            # if ctrl_bytes == bytes([0xFA, 0xAF]):
-                            #     logger.debug(
-                            #         f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
-                            #         f"{checksum == calc_chksum}) usually comes through when the cync phone app "
-                            #         f"(dis)connects to the BTLE mesh. Currently unknown what it means.\n\n"
-                            #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                            #     ) if CYNC_RAW is True else None
-                            # elif ctrl_bytes == bytes([0xFA, 0xD9]):
-                            #     logger.debug(
-                            #         f"{lp} Seen this ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
-                            #         f"{checksum == calc_chksum}), unknown what it means.\n\n"
-                            #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                            #     ) if CYNC_RAW is True else None
-                            # else:
-                            if CYNC_RAW:
-                                logger.warning(
-                                    f"{lp} UNKNOWN packet data (ctrl_bytes: {ctrl_bytes.hex(' ')} // checksum valid: "
-                                    f"{checksum == calc_chksum})\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                )
-
                 else:
-                    logger.warning(
-                        f"{lp} packet with no data????? After stripping header, queue and "
-                        f"msg id, there is no data to process?????"
-                    )
+                    # When the device sends a packet starting with 0x83, data is wrapped in 0x7e.
+                    # firmware version is sent without 0x7e boundaries
+                    if packet_data is not None:
+                        # logger.debug(f"{lp} Extracted BOUND data ({len(bytes(packet_data))} bytes) => {packet_data.hex(' ')}")
+
+                        # 0x83 inner struct - not always bound by 0x7e (firmware response doesn't have starting boundary, has ending boundary 0x7e)
+                        # firmware info, data len = 30 (0x32), fw starts idx 23-27, 20-22 fw type (86 01 0x)
+                        #  {83 00 00 00 32} {[39 87 c8 57] [00 03 00]} {00 00 00 00  ....29..W.......
+                        #  00 fa 00 20 00 00 00 00 00 00 00 00 ea 00 00 00  ... ............
+                        #  86 01 01 31[idx=23 packet_data] 30 33 36 31 00 00 00 00 00 00 00 00  ...10361........
+                        #  00 00 00 00 00 [8d] [7e]}                             ......~
+                        # firmware packet may only be sent on startup / network reconnection
+
+                        if packet_data[0] == 0x00:
+                            fw_type, fw_ver, fw_str = parse_unbound_firmware_version(
+                                packet_data, lp
+                            )
+                            if fw_type == "device":
+                                self.version = fw_ver
+                                self.version_str = fw_str
+                            else:
+                                self.network_version = fw_ver
+                                self.network_version_str = fw_str
+
+                        elif packet_data[0] == DATA_BOUNDARY:
+                            # checksum is 2nd last byte, last byte is 0x7e
+                            checksum = packet_data[-2]
+                            inner_header = packet_data[1:6]
+                            ctrl_bytes = packet_data[5:7]
+                            # removes checksum byte and 0x7e
+                            inner_data = packet_data[6:-2]
+                            calc_chksum = sum(inner_data) % 256
+
+                            # Most devices only report their own state using 0x83, however the LED light strip controllers also report other device state data
+                            # over 0x83.
+                            # This data can be wrong! sometimes reports wrong state and the RGB colors are slightly different from each device.
+                            # todo: need to not parse this data if we just issued a command or we do like mesh info and create a voting system
+                            if ctrl_bytes == bytes([0xFA, 0xDB]):
+                                extra_ctrl_bytes = packet_data[7]
+                                if extra_ctrl_bytes == 0x13:
+                                    # fa db 13 is internal status
+                                    # device internal status. state can be off and brightness set to a non 0.
+                                    # signifies what brightness when state = on, meaning don't rely on brightness for on/off.
+
+                                    # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
+                                    #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
+                                    #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
+                                    id_idx = 14
+                                    connected_idx = 19
+                                    state_idx = 20
+                                    bri_idx = 21
+                                    tmp_idx = 22
+                                    r_idx = 23
+                                    g_idx = 24
+                                    b_idx = 25
+                                    dev_id = packet_data[id_idx]
+                                    state = packet_data[state_idx]
+                                    bri = packet_data[bri_idx]
+                                    tmp = packet_data[tmp_idx]
+                                    _red = packet_data[r_idx]
+                                    _green = packet_data[g_idx]
+                                    _blue = packet_data[b_idx]
+                                    connected_to_mesh = packet_data[connected_idx]
+                                    raw_status: bytes = bytes(
+                                        [
+                                            dev_id,
+                                            state,
+                                            bri,
+                                            tmp,
+                                            _red,
+                                            _green,
+                                            _blue,
+                                            connected_to_mesh,
+                                        ]
+                                    )
+                                    ___dev = g.server.devices.get(dev_id)
+                                    if ___dev:
+                                        dev_name = f'"{___dev.name}" (ID: {dev_id})'
+                                    else:
+                                        dev_name = f"Device ID: {dev_id}"
+                                    _dbg_msg = ""
+                                    if CYNC_RAW is True:
+                                        _dbg_msg = (f"\n\n"
+                                                    f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                                    )
+                                    logger.debug(
+                                        f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
+
+                                    )
+                                    await g.server.parse_status(raw_status)
+                                    # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
+                                    # LED controller has this pattern
+                                    bad_chksum_msg = ""
+                                    if bytes2list(packet_data[9:12]) == [17, 17, 17]:
+                                        # LED controller sends its internal state in a stream
+                                        # Only the first packet in the stream has the correct checksum.
+                                        # All following 0x83 internal status packets for this stream will have the same checksum as the first packet.
+                                        # As soon as we get an internal status without the first packets calculated checksum, we know that series is
+                                        # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
+                                        # the packet belongs to the stream
+                                        bad_chksum_msg = (f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                                          f"// received: {checksum}"
+                                                          )
+                                        if self.first_83_packet_checksum is None:
+                                            # we want to calc the checksum and store it to compare to other packets in the series
+                                            self.first_83_packet_checksum = checksum
+                                            if calc_chksum != checksum:
+                                                bad_chksum_msg = (
+                                                    f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
+                                                    f"calculated: {calc_chksum} // received: {checksum}"
+                                                )
+
+                                        else:
+                                            if checksum == self.first_83_packet_checksum:
+                                                # logger.debug(
+                                                #     f"{lp} INITIAL STATUS STREAM packet data (override "
+                                                #     f"calculated checksum), old: {calc_chksum} // checksum: "
+                                                #     f"{checksum} // saved: {self.first_83_packet_checksum}"
+                                                # )
+                                                calc_chksum = self.first_83_packet_checksum
+                                            else:
+                                                self.first_83_packet_checksum = None
+
+                                    if calc_chksum != checksum:
+                                        if not bad_chksum_msg:
+                                            bad_chksum_msg = (
+                                                f"{lp} Checksum mismatch, calculated: {calc_chksum} "
+                                                f"// received: {checksum}"
+                                            )
+                                        # logger.warning(f"{bad_chksum_msg}\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}\nEXTRA CTRL BYTE: {hex(extra_ctrl_bytes)}")
+
+                                elif extra_ctrl_bytes == 0x14:
+                                    # unknown what this data is
+                                    # seems to be sent when the cync app is connecting to a device via BTLE, not connecting to cync-lan via HTTP
+
+                                    # chksum_inner_data = list(inner_data)
+                                    # chksum_inner_data.pop(4)
+                                    # calc_chksum = sum(chksum_inner_data) % 256
+                                    # logger.debug(f"{lp} 0xFA 0xDB 0x14 (NOT internal state)\nPACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data.hex(' ')}\nINT: {bytes2list(packet_data)}\n")
+                                    pass
+
+                            else:
+                                # if ctrl_bytes == bytes([0xFA, 0xAF]):
+                                #     logger.debug(
+                                #         f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
+                                #         f"{checksum == calc_chksum}) usually comes through when the cync phone app "
+                                #         f"(dis)connects to the BTLE mesh. Currently unknown what it means.\n\n"
+                                #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                #     ) if CYNC_RAW is True else None
+                                # elif ctrl_bytes == bytes([0xFA, 0xD9]):
+                                #     logger.debug(
+                                #         f"{lp} Seen this ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: "
+                                #         f"{checksum == calc_chksum}), unknown what it means.\n\n"
+                                #         f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                #     ) if CYNC_RAW is True else None
+                                # else:
+                                if CYNC_RAW:
+                                    logger.warning(
+                                        f"{lp} UNKNOWN packet data (ctrl_bytes: {ctrl_bytes.hex(' ')} // checksum valid: "
+                                        f"{checksum == calc_chksum})\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                    )
+
+                    else:
+                        logger.warning(
+                            f"{lp} packet with no data????? After stripping header, queue and "
+                            f"msg id, there is no data to process?????"
+                        )
                 ack = DEVICE_STRUCTS.x88_generate_ack(msg_id)
                 # logger.debug(f"{lp} RAW DATA: {data.hex(' ')}")
                 # logger.debug(f"{lp} Sending ACK -> {ack.hex(' ')}")
@@ -3086,316 +3086,315 @@ class CyncHTTPDevice:
                 # logger.debug(f"{lp} Control packet received: {packet_data.hex(' ')}") if CYNC_RAW is True else None
                 if self.is_app is True:
                     logger.debug(f"{lp} device is app, skipping packet...")
-                    return
-                if packet_data is not None:
+                else:
+                    if packet_data is not None:
+                        # 0x73 should ALWAYS have 0x7e bound data.
+                        # check for boundary, all bytes between boundaries are for this request
+                        if packet_data[0] == DATA_BOUNDARY:
+                            # checksum is 2nd last byte, last byte is 0x7e
+                            checksum = packet_data[-2]
+                            inner_header = packet_data[1:6]
+                            ctrl_bytes = packet_data[5:7]
+                            # removes checksum byte and 0x7e
+                            inner_data = packet_data[6:-2]
+                            calc_chksum = sum(inner_data) % 256
 
-                    # 0x73 should ALWAYS have 0x7e bound data.
-                    # check for boundary, all bytes between boundaries are for this request
-                    if packet_data[0] == DATA_BOUNDARY:
-                        # checksum is 2nd last byte, last byte is 0x7e
-                        checksum = packet_data[-2]
-                        inner_header = packet_data[1:6]
-                        ctrl_bytes = packet_data[5:7]
-                        # removes checksum byte and 0x7e
-                        inner_data = packet_data[6:-2]
-                        calc_chksum = sum(inner_data) % 256
-
-                        # find next 0x7e and extract the inner struct
-                        end_bndry_idx = packet_data[1:].find(DATA_BOUNDARY) + 1
-                        inner_struct = packet_data[1:end_bndry_idx]
-                        inner_struct_len = len(inner_struct)
-                        # ctrl bytes 0xf9, 0x52 indicates this is a mesh info struct
-                        # some device firmwares respond with a message received packet before replying with the data
-                        # example: 7e 1f 00 00 00 f9 52 01 00 00 53 7e (12 bytes, 0x7e bound. 10 bytes of data)
-                        if ctrl_bytes == bytes([0xF9, 0x52]):
-                            # logger.debug(f"{lp} got a mesh info response (len: {inner_struct_len}): {inner_struct.hex(' ')}")
-                            if inner_struct_len < 15:
-                                if inner_struct_len == 10:
-                                    # server sent mesh info request, this seems to be the ack?
-                                    # 7e 1f 00 00 00 f9 52 01 00 00 53 7e
-                                    # checksum (idx 10) = idx 6 + idx 7 % 256
-                                    # seen this with Full Color LED light strip controller firmware version: 3.0.204
-                                    succ_idx = 6
-                                    minfo_ack_succ = inner_struct[succ_idx]
-                                    minfo_ack_chksum = inner_struct[9]
-                                    calc_chksum = (
-                                        inner_struct[5] + inner_struct[6]
-                                    ) % 256
-                                    if minfo_ack_succ == 0x01:
-                                        # logger.debug(f"{lp} Mesh info request ACK received, success: {minfo_ack_succ}."
-                                        #              f" checksum byte = {minfo_ack_chksum}) // Calculated checksum "
-                                        #              f"= {calc_chksum}")
-                                        if minfo_ack_chksum != calc_chksum:
+                            # find next 0x7e and extract the inner struct
+                            end_bndry_idx = packet_data[1:].find(DATA_BOUNDARY) + 1
+                            inner_struct = packet_data[1:end_bndry_idx]
+                            inner_struct_len = len(inner_struct)
+                            # ctrl bytes 0xf9, 0x52 indicates this is a mesh info struct
+                            # some device firmwares respond with a message received packet before replying with the data
+                            # example: 7e 1f 00 00 00 f9 52 01 00 00 53 7e (12 bytes, 0x7e bound. 10 bytes of data)
+                            if ctrl_bytes == bytes([0xF9, 0x52]):
+                                # logger.debug(f"{lp} got a mesh info response (len: {inner_struct_len}): {inner_struct.hex(' ')}")
+                                if inner_struct_len < 15:
+                                    if inner_struct_len == 10:
+                                        # server sent mesh info request, this seems to be the ack?
+                                        # 7e 1f 00 00 00 f9 52 01 00 00 53 7e
+                                        # checksum (idx 10) = idx 6 + idx 7 % 256
+                                        # seen this with Full Color LED light strip controller firmware version: 3.0.204
+                                        succ_idx = 6
+                                        minfo_ack_succ = inner_struct[succ_idx]
+                                        minfo_ack_chksum = inner_struct[9]
+                                        calc_chksum = (
+                                            inner_struct[5] + inner_struct[6]
+                                        ) % 256
+                                        if minfo_ack_succ == 0x01:
+                                            # logger.debug(f"{lp} Mesh info request ACK received, success: {minfo_ack_succ}."
+                                            #              f" checksum byte = {minfo_ack_chksum}) // Calculated checksum "
+                                            #              f"= {calc_chksum}")
+                                            if minfo_ack_chksum != calc_chksum:
+                                                logger.warning(
+                                                    f"{lp} Mesh info request ACK checksum failed! {minfo_ack_chksum} != {calc_chksum}"
+                                                )
+                                        else:
                                             logger.warning(
-                                                f"{lp} Mesh info request ACK checksum failed! {minfo_ack_chksum} != {calc_chksum}"
+                                                f"{lp} Mesh info request ACK failed! success byte: {minfo_ack_succ}"
                                             )
+
                                     else:
+                                        logger.debug(
+                                            f"{lp} inner_struct is less than 15 bytes: {inner_struct.hex(' ')}"
+                                        )
+                                else:
+                                    # 15th OR 16th byte of inner struct is start of mesh info, 24 bytes long
+                                    minfo_start_idx = 14
+                                    minfo_length = 24
+                                    if inner_struct[minfo_start_idx] == 0x00:
+                                        minfo_start_idx += 1
                                         logger.warning(
-                                            f"{lp} Mesh info request ACK failed! success byte: {minfo_ack_succ}"
+                                            f"{lp}mesh: dev_id is 0 when using index: {minfo_start_idx-1}, "
+                                            f"trying index {minfo_start_idx} = {inner_struct[minfo_start_idx]}"
                                         )
 
-                                else:
-                                    logger.debug(
-                                        f"{lp} inner_struct is less than 15 bytes: {inner_struct.hex(' ')}"
-                                    )
-                            else:
-                                # 15th OR 16th byte of inner struct is start of mesh info, 24 bytes long
-                                minfo_start_idx = 14
-                                minfo_length = 24
-                                if inner_struct[minfo_start_idx] == 0x00:
-                                    minfo_start_idx += 1
-                                    logger.warning(
-                                        f"{lp}mesh: dev_id is 0 when using index: {minfo_start_idx-1}, "
-                                        f"trying index {minfo_start_idx} = {inner_struct[minfo_start_idx]}"
-                                    )
-
-                                if inner_struct[minfo_start_idx] == 0x00:
-                                    logger.error(
-                                        f"{lp}mesh: dev_id is 0 when using index: {minfo_start_idx}, skipping..."
-                                    )
-                                else:
-                                    # from what I've seen, the mesh info is 24 bytes long and repeats until the end.
-                                    # Reset known device ids, mesh is the final authority on what devices are connected
-                                    self.mesh_info = None
-                                    self.known_device_ids = []
-                                    ids_reported = []
-                                    loop_num = 0
-                                    mesh_info = {}
-                                    _m = []
-                                    _raw_m = []
-                                    # structs = []
-                                    try:
-                                        for i in range(
-                                            minfo_start_idx,
-                                            inner_struct_len,
-                                            minfo_length,
-                                        ):
-                                            loop_num += 1
-                                            mesh_dev_struct = inner_struct[
-                                                i : i + minfo_length
-                                            ]
-                                            dev_id = mesh_dev_struct[0]
-                                            # logger.debug(f"{lp} inner_struct[{i}:{i + minfo_length}]={mesh_dev_struct.hex(' ')}")
-                                            # parse status from mesh info
-                                            #  [05 00 44   01 00 00 44   01 00     00 00 00 64  00 00 00 00   00 00 00 00 00 00 00] - plug (devices are all connected to it via BT)
-                                            #  [07 00 00   01 00 00 00   01 01     00 00 00 64  00 00 00 fe   00 00 00 f8 00 00 00] - direct connect full color A19 bulb
-                                            #   ID  ? type  ?  ?  ? type  ? state   ?  ?  ? bri  ?  ?  ? tmp   ?  ?  ?  R  G  B  ?
-                                            type_idx = 2
-                                            state_idx = 8
-                                            bri_idx = 12
-                                            tmp_idx = 16
-                                            r_idx = 20
-                                            g_idx = 21
-                                            b_idx = 22
-                                            dev_type_id = mesh_dev_struct[type_idx]
-                                            dev_state = mesh_dev_struct[state_idx]
-                                            dev_bri = mesh_dev_struct[bri_idx]
-                                            dev_tmp = mesh_dev_struct[tmp_idx]
-                                            dev_r = mesh_dev_struct[r_idx]
-                                            dev_g = mesh_dev_struct[g_idx]
-                                            dev_b = mesh_dev_struct[b_idx]
-                                            # in mesh info, brightness can be > 0 when set to off
-                                            # however, ive seen devices that are on have a state of 0 but brightness 100
-                                            if dev_state == 0 and dev_bri > 0:
-                                                dev_bri = 0
-                                            raw_status = bytes(
-                                                [
-                                                    dev_id,
-                                                    dev_state,
-                                                    dev_bri,
-                                                    dev_tmp,
-                                                    dev_r,
-                                                    dev_g,
-                                                    dev_b,
-                                                    1,
-                                                    # dev_type,
+                                    if inner_struct[minfo_start_idx] == 0x00:
+                                        logger.error(
+                                            f"{lp}mesh: dev_id is 0 when using index: {minfo_start_idx}, skipping..."
+                                        )
+                                    else:
+                                        # from what I've seen, the mesh info is 24 bytes long and repeats until the end.
+                                        # Reset known device ids, mesh is the final authority on what devices are connected
+                                        self.mesh_info = None
+                                        self.known_device_ids = []
+                                        ids_reported = []
+                                        loop_num = 0
+                                        mesh_info = {}
+                                        _m = []
+                                        _raw_m = []
+                                        # structs = []
+                                        try:
+                                            for i in range(
+                                                minfo_start_idx,
+                                                inner_struct_len,
+                                                minfo_length,
+                                            ):
+                                                loop_num += 1
+                                                mesh_dev_struct = inner_struct[
+                                                    i : i + minfo_length
                                                 ]
-                                            )
-                                            _m.append(bytes2list(raw_status))
-                                            _raw_m.append(mesh_dev_struct.hex(" "))
-                                            if dev_id in g.cync_lan.server.devices:
-                                                # first device id is the device id of the http device we are connected to
-                                                ___dev = g.cync_lan.server.devices[dev_id]
-                                                dev_name = ___dev.name
-                                                if loop_num == 1:
-                                                    # byte 3 (idx 2) is a device type byte but,
-                                                    # it only reports on the first item (itself)
-                                                    # convert to int, and it is the same as deviceType from cloud.
-                                                    if not self.id:
-                                                        self.id = dev_id
-                                                        self.lp = f"{self.address}[{self.id}]:"
-                                                        cync_device = (
-                                                            g.cync_lan.cfg_devices[
-                                                                dev_id
-                                                            ]
-                                                        )
-                                                        logger.debug(
-                                                            f"{self.lp}parse:x{data[0]:02x}: setting HTTP"
-                                                            f"Device ID: {self.id}"
-                                                        )
-                                                        self.capabilities = cync_device.check_dev_capabilities(
-                                                            dev_type_id
-                                                        )
-                                                        self.device_types = (
-                                                            cync_device.check_dev_type(
+                                                dev_id = mesh_dev_struct[0]
+                                                # logger.debug(f"{lp} inner_struct[{i}:{i + minfo_length}]={mesh_dev_struct.hex(' ')}")
+                                                # parse status from mesh info
+                                                #  [05 00 44   01 00 00 44   01 00     00 00 00 64  00 00 00 00   00 00 00 00 00 00 00] - plug (devices are all connected to it via BT)
+                                                #  [07 00 00   01 00 00 00   01 01     00 00 00 64  00 00 00 fe   00 00 00 f8 00 00 00] - direct connect full color A19 bulb
+                                                #   ID  ? type  ?  ?  ? type  ? state   ?  ?  ? bri  ?  ?  ? tmp   ?  ?  ?  R  G  B  ?
+                                                type_idx = 2
+                                                state_idx = 8
+                                                bri_idx = 12
+                                                tmp_idx = 16
+                                                r_idx = 20
+                                                g_idx = 21
+                                                b_idx = 22
+                                                dev_type_id = mesh_dev_struct[type_idx]
+                                                dev_state = mesh_dev_struct[state_idx]
+                                                dev_bri = mesh_dev_struct[bri_idx]
+                                                dev_tmp = mesh_dev_struct[tmp_idx]
+                                                dev_r = mesh_dev_struct[r_idx]
+                                                dev_g = mesh_dev_struct[g_idx]
+                                                dev_b = mesh_dev_struct[b_idx]
+                                                # in mesh info, brightness can be > 0 when set to off
+                                                # however, ive seen devices that are on have a state of 0 but brightness 100
+                                                if dev_state == 0 and dev_bri > 0:
+                                                    dev_bri = 0
+                                                raw_status = bytes(
+                                                    [
+                                                        dev_id,
+                                                        dev_state,
+                                                        dev_bri,
+                                                        dev_tmp,
+                                                        dev_r,
+                                                        dev_g,
+                                                        dev_b,
+                                                        1,
+                                                        # dev_type,
+                                                    ]
+                                                )
+                                                _m.append(bytes2list(raw_status))
+                                                _raw_m.append(mesh_dev_struct.hex(" "))
+                                                if dev_id in g.cync_lan.server.devices:
+                                                    # first device id is the device id of the http device we are connected to
+                                                    ___dev = g.cync_lan.server.devices[dev_id]
+                                                    dev_name = ___dev.name
+                                                    if loop_num == 1:
+                                                        # byte 3 (idx 2) is a device type byte but,
+                                                        # it only reports on the first item (itself)
+                                                        # convert to int, and it is the same as deviceType from cloud.
+                                                        if not self.id:
+                                                            self.id = dev_id
+                                                            self.lp = f"{self.address}[{self.id}]:"
+                                                            cync_device = (
+                                                                g.cync_lan.cfg_devices[
+                                                                    dev_id
+                                                                ]
+                                                            )
+                                                            logger.debug(
+                                                                f"{self.lp}parse:x{data[0]:02x}: setting HTTP"
+                                                                f"Device ID: {self.id}"
+                                                            )
+                                                            self.capabilities = cync_device.check_dev_capabilities(
                                                                 dev_type_id
                                                             )
-                                                        )
-                                                        # logger.debug(f"{lp} device type ({dev_type_id}) capabilities: {self.capabilities}")
-                                                        # logger.debug(f"{lp} device type ({dev_type_id}): {self.device_types}")
-                                                    elif self.id and self.id != dev_id:
-                                                        logger.warning(
-                                                            f"{lp} The first device reported in 0x83 is "
-                                                            f"usually the http device. current: {self.id} "
-                                                            f"// proposed: {dev_id}"
-                                                        )
-                                                    lp = f"{self.lp}parse:x{data[0]:02x}:"
-                                                    self.device_type_id = dev_type_id
-                                                    self.name = dev_name
+                                                            self.device_types = (
+                                                                cync_device.check_dev_type(
+                                                                    dev_type_id
+                                                                )
+                                                            )
+                                                            # logger.debug(f"{lp} device type ({dev_type_id}) capabilities: {self.capabilities}")
+                                                            # logger.debug(f"{lp} device type ({dev_type_id}): {self.device_types}")
+                                                        elif self.id and self.id != dev_id:
+                                                            logger.warning(
+                                                                f"{lp} The first device reported in 0x83 is "
+                                                                f"usually the http device. current: {self.id} "
+                                                                f"// proposed: {dev_id}"
+                                                            )
+                                                        lp = f"{self.lp}parse:x{data[0]:02x}:"
+                                                        self.device_type_id = dev_type_id
+                                                        self.name = dev_name
 
-                                                ids_reported.append(dev_id)
-                                                # structs.append(mesh_dev_struct.hex(" "))
-                                                self.known_device_ids.append(dev_id)
+                                                    ids_reported.append(dev_id)
+                                                    # structs.append(mesh_dev_struct.hex(" "))
+                                                    self.known_device_ids.append(dev_id)
 
-                                            else:
-                                                logger.warning(
-                                                    f"{lp} Device ID {dev_id} not found in devices "
-                                                    f"defined in config file: "
-                                                    f"{g.cync_lan.server.devices.keys()}"
-                                                )
-                                        # -- END OF mesh info response parsing loop --
-                                    except IndexError:
-                                        # ran out of data
-                                        # logger.debug(f"{lp} IndexError parsing mesh info response (expected)") if CYNC_RAW is True else None
-                                        pass
-                                    except Exception as e:
-                                        logger.error(
-                                            f"{lp} MESH INFO for loop EXCEPTION: {e}"
+                                                else:
+                                                    logger.warning(
+                                                        f"{lp} Device ID {dev_id} not found in devices "
+                                                        f"defined in config file: "
+                                                        f"{g.cync_lan.server.devices.keys()}"
+                                                    )
+                                            # -- END OF mesh info response parsing loop --
+                                        except IndexError:
+                                            # ran out of data
+                                            # logger.debug(f"{lp} IndexError parsing mesh info response (expected)") if CYNC_RAW is True else None
+                                            pass
+                                        except Exception as e:
+                                            logger.error(
+                                                f"{lp} MESH INFO for loop EXCEPTION: {e}"
+                                            )
+                                        # if ids_reported:
+                                        # logger.debug(
+                                        #     f"{lp} from: {self.id} - MESH INFO // Device IDs reported: "
+                                        #     f"{sorted(ids_reported)}"
+                                        # )
+                                        # if structs:
+                                        #     logger.debug(
+                                        #         f"{lp} from: {self.id} -  MESH INFO // STRUCTS: {structs}"
+                                        #     )
+                                        if self.parse_mesh_status is True:
+                                            logger.debug(
+                                                f"{lp} All device status request data\n{_m}"
+                                            )
+                                            # for status in _m:
+                                            #     await g.server.parse_status(bytes(status))
+                                            await asyncio.gather(*[
+                                                g.server.parse_status(bytes(status))
+                                                for status in _m
+                                            ])
+
+                                        mesh_info["status"] = _m
+                                        mesh_info["id_from"] = self.id
+                                        # logger.debug(f"\n\n{lp} MESH INFO // {_raw_m}\n")
+                                        self.mesh_info = MeshInfo(**mesh_info)
+                                        # Send mesh status ack
+                                        # 73 00 00 00 14 2d e4 b5 d2 15 2d 00 7e 1e 00 00
+                                        #  00 f8 {af 02 00 af 01} 61 7e
+                                        # checksum 61 hex = int 97 solved: {af+02+00+af+01} % 256 = 97
+                                        mesh_ack = bytes([0x73, 0x00, 0x00, 0x00, 0x14])
+                                        mesh_ack += bytes(self.queue_id)
+                                        mesh_ack += bytes([0x00, 0x00, 0x00])
+                                        mesh_ack += bytes(
+                                            [
+                                                0x7E,
+                                                0x1E,
+                                                0x00,
+                                                0x00,
+                                                0x00,
+                                                0xF8,
+                                                0xAF,
+                                                0x02,
+                                                0x00,
+                                                0xAF,
+                                                0x01,
+                                                0x61,
+                                                0x7E,
+                                            ]
                                         )
-                                    # if ids_reported:
-                                    # logger.debug(
-                                    #     f"{lp} from: {self.id} - MESH INFO // Device IDs reported: "
-                                    #     f"{sorted(ids_reported)}"
-                                    # )
-                                    # if structs:
-                                    #     logger.debug(
-                                    #         f"{lp} from: {self.id} -  MESH INFO // STRUCTS: {structs}"
-                                    #     )
-                                    if self.parse_mesh_status is True:
-                                        logger.debug(
-                                            f"{lp} All device status request data\n{_m}"
-                                        )
-                                        # for status in _m:
-                                        #     await g.server.parse_status(bytes(status))
-                                        await asyncio.gather(*[
-                                            g.server.parse_status(bytes(status))
-                                            for status in _m
-                                        ])
-
-                                    mesh_info["status"] = _m
-                                    mesh_info["id_from"] = self.id
-                                    # logger.debug(f"\n\n{lp} MESH INFO // {_raw_m}\n")
-                                    self.mesh_info = MeshInfo(**mesh_info)
-                                    # Send mesh status ack
-                                    # 73 00 00 00 14 2d e4 b5 d2 15 2d 00 7e 1e 00 00
-                                    #  00 f8 {af 02 00 af 01} 61 7e
-                                    # checksum 61 hex = int 97 solved: {af+02+00+af+01} % 256 = 97
-                                    mesh_ack = bytes([0x73, 0x00, 0x00, 0x00, 0x14])
-                                    mesh_ack += bytes(self.queue_id)
-                                    mesh_ack += bytes([0x00, 0x00, 0x00])
-                                    mesh_ack += bytes(
-                                        [
-                                            0x7E,
-                                            0x1E,
-                                            0x00,
-                                            0x00,
-                                            0x00,
-                                            0xF8,
-                                            0xAF,
-                                            0x02,
-                                            0x00,
-                                            0xAF,
-                                            0x01,
-                                            0x61,
-                                            0x7E,
-                                        ]
+                                        # logger.debug(f"{lp} Sending MESH INFO ACK -> {mesh_ack.hex(' ')}")
+                                        await self.write(mesh_ack)
+                                        # Always clear parse mesh status
+                                        self.parse_mesh_status = False
+                            else:
+                                (
+                                    logger.debug(
+                                        f"{lp} control bytes (checksum: {checksum}, verified: {checksum == calc_chksum}): {ctrl_bytes.hex(' ')} // packet data:  {packet_data.hex(' ')}"
                                     )
-                                    # logger.debug(f"{lp} Sending MESH INFO ACK -> {mesh_ack.hex(' ')}")
-                                    await self.write(mesh_ack)
-                                    # Always clear parse mesh status
-                                    self.parse_mesh_status = False
-                        else:
-                            (
-                                logger.debug(
-                                    f"{lp} control bytes (checksum: {checksum}, verified: {checksum == calc_chksum}): {ctrl_bytes.hex(' ')} // packet data:  {packet_data.hex(' ')}"
+                                    if CYNC_RAW
+                                    else None
                                 )
-                                if CYNC_RAW
-                                else None
+
+                                if ctrl_bytes[0] == 0xF9 and ctrl_bytes[1] in (0xD0, 0xF0):
+                                    # control packet ack - changed state.
+                                    # handle callbacks for messages
+                                    # byte 8 is success? 0x01 yes // 0x00 no
+                                    # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e
+                                    # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
+                                    # byte 7 (f0) + 8 (01) = checksum (f1)
+                                    ctrl_msg_id = packet_data[1]
+                                    success = packet_data[7] == 1
+                                    # todo: possible cleanup for missed callbacks
+                                    msg = self.messages.control.pop(ctrl_msg_id, None)
+                                    if success is True and msg is not None:
+                                        if msg.sent_by == self.address:
+                                            logger.debug(f"{lp} CONTROL packet ACK (success: {success}) callback found -> {msg}")
+                                            await msg.callback
+                                # newer firmware devices seen in led light strip so far,
+                                # send their firmware version data in a 0x7e bound struct.
+                                # I've also seen these ctrl bytes in the msg that other devices send in FA AF
+                                # the struct is 31 bytes long with the 0x7e boundaries, unbound it is 29 bytes long
+                                elif ctrl_bytes == bytes([0xFA, 0x8E]):
+                                    if packet_data[1] == 0x00:
+                                        logger.debug(
+                                            f"{lp} Device sent ({ctrl_bytes.hex(' ')}) BOUND firmware version data"
+                                        )
+                                        fw_type, fw_ver, fw_str = (
+                                            parse_unbound_firmware_version(
+                                                packet_data[1:-1], lp
+                                            )
+                                        )
+                                        if fw_type == "device":
+                                            self.version = fw_ver
+                                            self.version_str = fw_str
+                                        else:
+                                            self.network_version = fw_ver
+                                            self.network_version_str = fw_str
+                                    else:
+                                        if CYNC_RAW is True:
+                                            logger.debug(
+                                                f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: {checksum == calc_chksum}) usually comes through "
+                                                f"when the cync phone app (dis)connects to the BTLE mesh. Unknown what it means"
+                                                f"\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                            )
+
+
+                                else:
+                                    logger.debug(
+                                        f"{lp} UNKNOWN CTRL_BYTES: {ctrl_bytes.hex(' ')} // EXTRACTED DATA -> "
+                                        f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                    )
+                        else:
+                            logger.debug(
+                                f"{lp} packet with no boundary found????? After stripping header, queue and "
+                                f"msg id, there is no data to process?????"
                             )
 
-                            if ctrl_bytes[0] == 0xF9 and ctrl_bytes[1] in (0xD0, 0xF0):
-                                # control packet ack - changed state.
-                                # handle callbacks for messages
-                                # byte 8 is success? 0x01 yes // 0x00 no
-                                # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e
-                                # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
-                                # byte 7 (f0) + 8 (01) = checksum (f1)
-                                ctrl_msg_id = packet_data[1]
-                                success = packet_data[7] == 1
-                                # todo: possible cleanup for missed callbacks
-                                msg = self.messages.control.pop(ctrl_msg_id, None)
-                                if success is True and msg is not None:
-                                    if msg.sent_by == self.address:
-                                        logger.debug(f"{lp} CONTROL packet ACK (success: {success}) callback found -> {msg}")
-                                        await msg.callback
-                            # newer firmware devices seen in led light strip so far,
-                            # send their firmware version data in a 0x7e bound struct.
-                            # I've also seen these ctrl bytes in the msg that other devices send in FA AF
-                            # the struct is 31 bytes long with the 0x7e boundaries, unbound it is 29 bytes long
-                            elif ctrl_bytes == bytes([0xFA, 0x8E]):
-                                if packet_data[1] == 0x00:
-                                    logger.debug(
-                                        f"{lp} Device sent ({ctrl_bytes.hex(' ')}) BOUND firmware version data"
-                                    )
-                                    fw_type, fw_ver, fw_str = (
-                                        parse_unbound_firmware_version(
-                                            packet_data[1:-1], lp
-                                        )
-                                    )
-                                    if fw_type == "device":
-                                        self.version = fw_ver
-                                        self.version_str = fw_str
-                                    else:
-                                        self.network_version = fw_ver
-                                        self.network_version_str = fw_str
-                                else:
-                                    if CYNC_RAW is True:
-                                        logger.debug(
-                                            f"{lp} This ctrl struct ({ctrl_bytes.hex(' ')} // checksum valid: {checksum == calc_chksum}) usually comes through "
-                                            f"when the cync phone app (dis)connects to the BTLE mesh. Unknown what it means"
-                                            f"\n\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                        )
-
-
-                            else:
-                                logger.debug(
-                                    f"{lp} UNKNOWN CTRL_BYTES: {ctrl_bytes.hex(' ')} // EXTRACTED DATA -> "
-                                    f"HEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                )
                     else:
-                        logger.debug(
-                            f"{lp} packet with no boundary found????? After stripping header, queue and "
-                            f"msg id, there is no data to process?????"
+                        logger.warning(
+                            f"{lp} packet with no data????? After stripping 12 bytes header (5), queue (4) and "
+                            f"msg id (3), there is no data to process!?!"
                         )
-
-                    ack = DEVICE_STRUCTS.x7b_generate_ack(queue_id, msg_id)
-                    # logger.debug(f"{lp} Sending ACK -> {ack.hex(' ')}")
-                    await self.write(ack)
-                else:
-                    logger.warning(
-                        f"{lp} packet with no data????? After stripping 12 bytes header (5), queue (4) and "
-                        f"msg id (3), there is no data to process!?!"
-                    )
+                ack = DEVICE_STRUCTS.x7b_generate_ack(queue_id, msg_id)
+                # logger.debug(f"{lp} Sending ACK -> {ack.hex(' ')}")
+                await self.write(ack)
         elif pkt_type in PhoneAppStructs.requests:
             if self.is_app is False:
                 logger.info(f"{lp} Device has been identified as the cync mobile app, blackholing...")
