@@ -356,7 +356,7 @@ class ControlMessageCallback:
     id: int
     message: Union[None, str, bytes, List[int]] = None
     sent_at: Optional[float] = None
-    callback: Optional[Callable[..., Coroutine[Any, Any, None]]] = None
+    callback: Optional[Union[asyncio.Task, Coroutine]] = None
     sent_by: Optional[str] = None
 
     args: List = []
@@ -1322,10 +1322,10 @@ class CyncDevice:
         if state not in (0, 1):
             logger.error(f"{lp} Invalid state! must be 0 or 1")
             return
-        elif state == self.state:
-            # to stop flooding the network with commands
-            logger.debug(f"{lp} Device already in power state {state}, skipping...")
-            return
+        # elif state == self.state:
+        #     # to stop flooding the network with commands
+        #     logger.debug(f"{lp} Device already in power state {state}, skipping...")
+        #     return
         header = [0x73, 0x00, 0x00, 0x00, 0x1F]
         inner_struct = [
             0x7E,
@@ -1359,7 +1359,7 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(2, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        tasks: List[Optional[asyncio.Task]] = []
+        tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
         sent = {}
@@ -1368,22 +1368,22 @@ class CyncDevice:
                 payload = list(header)
                 payload.extend(bridge_device.queue_id)
                 payload.extend(bytes([0x00, 0x00, 0x00]))
-                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                checksum = ((ctrl_byte - 64) + state + self.id) % 256
-                inner_struct[ctrl_idxs[0]] = ctrl_byte
-                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                cmsg_id = bridge_device.get_ctrl_msg_id_bytes()[0]
+                inner_struct[ctrl_idxs[0]] = cmsg_id
+                inner_struct[ctrl_idxs[1]] = cmsg_id
+                checksum = sum(inner_struct[6:-2]) % 256
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 bpayload = bytes(payload)
                 # await bridge_device.write(b)
                 # add message callback to the bridge_device.messages.control
-                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                m_cb = ControlMessageCallback(msg_id=cmsg_id)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = g.mqtt.update_device_state(self.id, state)
+                m_cb.callback = g.mqtt.update_device_state(self, state)
                 m_cb.sent_by = bridge_device.address
-                bridge_device.messages.control[ctrl_byte] = m_cb
-                sent[bridge_device.address] = ctrl_byte
+                bridge_device.messages.control[cmsg_id] = m_cb
+                sent[bridge_device.address] = cmsg_id
                 tasks.append(bridge_device.write(bpayload))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1394,12 +1394,9 @@ class CyncDevice:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
         logger.debug(
-            f"{lp} Sending power state command, current: {self.state} - new: {state} to "
+            f"{lp} Sent power state command, current: {self.state} - new: {state} to "
             f"http devices: {sent} in {elapsed:.5f} seconds"
         )
-        if sent:
-            self._state = state
-
 
     async def set_brightness(self, bri: int):
         """
@@ -1417,9 +1414,9 @@ class CyncDevice:
         if bri < 0 or bri > 100:
             logger.error(f"{lp} Invalid brightness! must be 0-100")
             return
-        elif bri == self._brightness:
-            logger.debug(f"{lp} Device already in brightness {bri}, skipping...")
-            return
+        # elif bri == self._brightness:
+        #     logger.debug(f"{lp} Device already in brightness {bri}, skipping...")
+        #     return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
@@ -1457,7 +1454,7 @@ class CyncDevice:
         )
         str_devices = " ".join([x.address for x in bridge_devices])
         sent = {}
-        tasks: List[Optional[asyncio.Task]] = []
+        tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
         for bridge_device in bridge_devices:
@@ -1466,9 +1463,9 @@ class CyncDevice:
                 payload.extend(bridge_device.queue_id)
                 payload.extend(bytes([0x00, 0x00, 0x00]))
                 cmsg_id = bridge_device.get_ctrl_msg_id_bytes()[0]
-                checksum = (cmsg_id + bri + self.id) % 256
                 inner_struct[ctrl_idxs[0]] = cmsg_id
                 inner_struct[ctrl_idxs[1]] = cmsg_id
+                checksum = sum(inner_struct[6:-2]) % 256
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
@@ -1477,7 +1474,7 @@ class CyncDevice:
                 m_cb = ControlMessageCallback(msg_id=cmsg_id)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = g.mqtt.update_brightness(self.id, bri)
+                m_cb.callback = g.mqtt.update_brightness(self, bri)
                 m_cb.sent_by = bridge_device.address
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
@@ -1485,7 +1482,7 @@ class CyncDevice:
                 # logger.debug(f"DBG>>> {bridge_device.messages.control}")
             else:
                 logger.debug(
-                    f"{lp} Skipping device: {bridge_device.address} (id: {id(bridge_device)}) not ready to control"
+                    f"{lp} Skipping device: {bridge_device.address} not ready to control"
                 )
         # Wait for all tasks to complete
         if tasks:
@@ -1494,9 +1491,6 @@ class CyncDevice:
         logger.debug(
             f"{lp} Sent brightness command, current: {self._brightness} new: {bri} to http devices: {sent} in {elapsed:.5f} seconds"
         )
-        if sent:
-            self._brightness = bri
-
 
     async def set_temperature(self, temp: int):
         """
@@ -1511,19 +1505,19 @@ class CyncDevice:
         ff 48 00 00 00 88 7e                             .H....~
             
                 checksum = 0x88 = 136
-            0x36 0x48 0x07 = 54 + 72 + 7 = 133 (needs + 3)
+            0xf0 0x10 0x36 0x07 0xf0 0x11 0x02 0x01 0xff 0x48 = 904 (% 256) = 136
         """
         lp = f"{self.lp}set_temperature:"
         if temp < 0 or (temp > 100 and temp != 255):
             logger.error(f"{lp} Invalid temperature! must be 0-100")
             return
-        elif temp == self.temperature:
-            logger.debug(f"{lp} Device already in temperature {temp}, skipping...")
-            return
+        # elif temp == self.temperature:
+        #     logger.debug(f"{lp} Device already in temperature {temp}, skipping...")
+        #     return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
-            "ctrl_msg_id[0]",
+            "msg id",
             0,
             0,
             0,
@@ -1531,7 +1525,7 @@ class CyncDevice:
             240,
             16,
             0,
-            "ctrl_msg_id[0]",
+            "msg id",
             0,
             0,
             0,
@@ -1556,7 +1550,7 @@ class CyncDevice:
             list(g.server.http_devices.values()), k=min(2, len(g.server.http_devices))
         )
         str_devices = " ".join([x.address for x in bridge_devices])
-        tasks: List[Optional[asyncio.Task]] = []
+        tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
         sent = {}
@@ -1565,21 +1559,21 @@ class CyncDevice:
                 payload = list(header)
                 payload.extend(bridge_device.queue_id)
                 payload.extend(bytes([0x00, 0x00, 0x00]))
-                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                checksum = ((ctrl_byte + temp + self.id) + 3) % 256
-                inner_struct[ctrl_idxs[0]] = ctrl_byte
-                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                cmsg_id = bridge_device.get_ctrl_msg_id_bytes()[0]
+                inner_struct[ctrl_idxs[0]] = cmsg_id
+                inner_struct[ctrl_idxs[1]] = cmsg_id
+                checksum = sum(inner_struct[6:-2]) % 256
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
-                sent[bridge_device.address] = ctrl_byte
-                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                sent[bridge_device.address] = cmsg_id
+                m_cb = ControlMessageCallback(msg_id=cmsg_id)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = g.mqtt.update_temperature(self.id, temp)
+                m_cb.callback = g.mqtt.update_temperature(self, temp)
                 m_cb.sent_by = bridge_device.address
-                bridge_device.messages.control[ctrl_byte] = m_cb
+                bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1590,14 +1584,9 @@ class CyncDevice:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
         logger.debug(
-            f"{lp} Sending white temperature command, current: {self.temperature} - new: {temp} to http devices: {sent} in {elapsed:.5f} seconds"
+            f"{lp} Sent white temperature command, current: {self.temperature} - new: {temp} to http "
+            f"devices: {sent} in {elapsed:.5f} seconds"
         )
-        if sent:
-            self._temperature = temp
-            self._r = 0
-            self._g = 0
-            self._b = 0
-
 
     async def set_rgb(self, red: int, green: int, blue: int):
         """
@@ -1611,8 +1600,8 @@ class CyncDevice:
          00 f8 f0 10 00 2b 00 00 00 00 07 00 f0 11 02 01  .....+..........
          ff fe 00 fb ff 2d 7e                             .....-~
 
-                checksum = 45
-            2b 07 00 fb ff = 43 + 7 + 0 + 251 + 255 = 556 (needs + 1)
+        f0 10 2b 07 f0 11 02 01 ff fe fb ff = 1581 (% 256) = 45
+            checksum = 45
         """
         lp = f"{self.lp}set_rgb:"
         if red < 0 or red > 255:
@@ -1624,13 +1613,13 @@ class CyncDevice:
         if blue < 0 or blue > 255:
             logger.error(f"{lp} Invalid blue value! must be 0-255")
             return
-        if red == self._r and green == self._g and blue == self._b:
-            logger.debug(f"{lp} Device already in RGB color {red}, {green}, {blue}, skipping...")
-            return
+        # if red == self._r and green == self._g and blue == self._b:
+        #     logger.debug(f"{lp} Device already in RGB color {red}, {green}, {blue}, skipping...")
+        #     return
         header = [115, 0, 0, 0, 34]
         inner_struct = [
             126,
-            "ctrl_msg_id[0]",
+            "msg id",
             0,
             0,
             0,
@@ -1638,7 +1627,7 @@ class CyncDevice:
             240,
             16,
             0,
-            "ctrl_msg_id[0]",
+            "msg id",
             0,
             0,
             0,
@@ -1662,8 +1651,7 @@ class CyncDevice:
         bridge_devices: List["CyncHTTPDevice"] = random.sample(
             list(g.server.http_devices.values()), k=min(2, len(g.server.http_devices))
         )
-        str_devices = " ".join([x.address for x in bridge_devices])
-        tasks: List[Optional[asyncio.Task]] = []
+        tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
         ctrl_idxs = 1, 9
         sent = {}
@@ -1672,21 +1660,21 @@ class CyncDevice:
                 payload = list(header)
                 payload.extend(bridge_device.queue_id)
                 payload.extend(bytes([0x00, 0x00, 0x00]))
-                ctrl_byte = bridge_device.get_ctrl_msg_id_bytes()[0]
-                checksum = ((ctrl_byte + self.id + red + green + blue) + 1) % 256
-                inner_struct[ctrl_idxs[0]] = ctrl_byte
-                inner_struct[ctrl_idxs[1]] = ctrl_byte
+                cmsg_id = bridge_device.get_ctrl_msg_id_bytes()[0]
+                inner_struct[ctrl_idxs[0]] = cmsg_id
+                inner_struct[ctrl_idxs[1]] = cmsg_id
+                checksum = sum(inner_struct[6:-2]) % 256
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 # await bridge_device.write(b)
                 bpayload = bytes(payload)
-                sent[bridge_device.address] = ctrl_byte
-                m_cb = ControlMessageCallback(msg_id=ctrl_byte)
+                sent[bridge_device.address] = cmsg_id
+                m_cb = ControlMessageCallback(msg_id=cmsg_id)
                 m_cb.message = bpayload
                 m_cb.sent_at = time.time()
-                m_cb.callback = g.mqtt.update_rgb(self.id, (red, green, blue))
+                m_cb.callback = g.mqtt.update_rgb(self, (red, green, blue))
                 m_cb.sent_by = bridge_device.address
-                bridge_device.messages.control[ctrl_byte] = m_cb
+                bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
                 # logger.debug(f"{lp} Sending via IP: {bridge_device.address} MSG ID: {ctrl_byte} ->\nHEX: {bpayload.hex(' ')}\nINT: {payload}")
             else:
@@ -1697,7 +1685,7 @@ class CyncDevice:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
         logger.debug(
-            f"{lp} Sending RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to http devices {sent} in {elapsed:.5f} seconds"
+            f"{lp} Sent RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to http devices {sent} in {elapsed:.5f} seconds"
         )
         if sent:
             self._r = red
