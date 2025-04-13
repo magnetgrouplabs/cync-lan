@@ -3857,7 +3857,7 @@ class MQTTClient:
         except aiomqtt.exceptions.MqttCodeError as mqtt_exc:
             logger.warning(f"{lp} MQTTCodeError: {mqtt_exc}")
 
-    async def connect(self):
+    async def connect(self) -> bool:
         lp = f"{self.lp}connect:"
         try:
             await self.client.__aexit__(None, None, None)
@@ -3883,6 +3883,10 @@ class MQTTClient:
             logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
             self._connected = True
             await self.send_birth_msg()
+            await asyncio.sleep(1)
+            await self.homeassistant_discovery()
+            return True
+        return False
 
 
     def __init__(
