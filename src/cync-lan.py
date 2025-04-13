@@ -4145,7 +4145,7 @@ class MQTTClient:
             )
             await self.send_will_msg()
             await self.client.__aexit__(None, None, None)
-        except aiomqtt.MqttError as ce:
+        except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as ce:
             logger.error(
                 "%s MQTT disconnect failed: %s" % (lp, ce),
                 exc_info=True,
@@ -4222,7 +4222,7 @@ class MQTTClient:
                 timeout=3.0,
             )
         except Exception as e:
-            logger.exception(f"{lp} publish exception: {e}")
+            logger.warning(f"{lp} publish exception: {e}")
         else:
             ret = True
         finally:
@@ -4547,7 +4547,7 @@ if __name__ == "__main__":
             if g and g.mqtt and g.mqtt.client:
                 try:
                     loop.run_until_complete(g.mqtt.client.__aexit__(None, None, None))
-                except aiomqtt.MqttError as ce:
+                except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as ce:
                     pass
             if cync and not cync.loop.is_closed():
                 logger.debug("main: Closing loop...")
