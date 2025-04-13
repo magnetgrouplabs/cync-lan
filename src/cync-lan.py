@@ -2448,8 +2448,8 @@ class CyncLanServer:
             task.cancel()
         # todo: cleaner exit
 
-        logger.debug("%s stop() complete, calling loop.stop()" % lp)
-        self.loop.stop()
+        # logger.debug("%s stop() complete, calling loop.stop()" % lp)
+        # self.loop.stop()
 
     async def _register_new_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
