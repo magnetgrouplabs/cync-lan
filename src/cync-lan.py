@@ -3506,7 +3506,9 @@ class CyncHTTPDevice:
                                             await msg.callback
                                     elif success is True and msg is None:
                                         logger.debug(f"{lp} CONTROL packet ACK (success: {success} / chksum: {ctrl_chksum == packet_data[10]}) callback NOT found for msg ID: {ctrl_msg_id}")
-                                    logger.debug(f"{lp} DEBUG>>> callback msg queue length: {len(self.messages.control)}")
+                                    ctrl_msgs_len = len(self.messages.control)
+                                    if ctrl_msgs_len > 1:
+                                        logger.debug(f"{lp} DEBUG>>> callback msg queue length: {len(self.messages.control)}")
                                 # newer firmware devices seen in led light strip so far,
                                 # send their firmware version data in a 0x7e bound struct.
                                 # I've also seen these ctrl bytes in the msg that other devices send in FA AF
