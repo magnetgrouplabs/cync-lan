@@ -1199,7 +1199,7 @@ class CyncDevice:
         self._state: int = 0
         # 0-100
         self._brightness: int = 0
-        # 0-100 (warm to cool)
+        # 0-100 (warm to cool), 129 = in effect mode, 254 = in RGB mode
         self._temperature: int = 0
         # 0-255
         self._r: int = 0
@@ -2533,12 +2533,13 @@ class CyncLAN:
         """
         global CYNC_MQTT_URL, CYNC_CERT, CYNC_KEY, CYNC_HOST, CYNC_PORT, CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS, g
 
-        logger.debug("%s reading devices from exported Cync config file..." % self.lp)
+        logger.debug(f"{self.lp} reading devices from Cync config file: {cfg_file.expanduser().resolve().as_posix()}")
         try:
             raw_config = yaml.safe_load(cfg_file.read_text())
         except Exception as e:
             logger.error(f"{self.lp} Error reading config file: {e}", exc_info=True)
             raise e
+
         devices = {}
         if "mqtt" in raw_config:
             raw_mqtt_conf = raw_config["mqtt"]
@@ -2621,17 +2622,15 @@ class CyncLAN:
         if CYNC_MQTT_PASS:
             os.environ["CYNC_MQTT_PASS"] = CYNC_MQTT_PASS
         # parse homes and devices
-        for cfg_name, cfg in raw_config["account data"].items():
-            home_id = cfg["id"]
-            if "devices" not in cfg:
+        for cync_home_name, home_cfg in raw_config["account data"].items():
+            home_id = home_cfg["id"]
+            if "devices" not in home_cfg:
                 logger.warning(
-                    f"{self.lp} No devices found in config for: {cfg_name} (ID: {home_id}), skipping..."
+                    f"{self.lp} No devices found in config for: {cync_home_name} (ID: {home_id}), skipping..."
                 )
                 continue
-            if "name" not in cfg:
-                cfg["name"] = f"HomeID_{home_id}"
             # Create devices
-            for cync_id, cync_device in cfg["devices"].items():
+            for cync_id, cync_device in home_cfg["devices"].items():
                 cync_device: dict
                 device_name = (
                     cync_device["name"]
@@ -2644,21 +2643,35 @@ class CyncLAN:
                             f"{self.lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                         )
                         continue
-                self._ids_from_config.append(f"{home_id}-{cync_id}")
-
                 fw_version = cync_device["fw"] if "fw" in cync_device else None
+                wmac = None
+                btmac = None
+                # 'mac': 26616350814, 'wifi_mac': 26616350815
+                if 'mac' in cync_device:
+                    btmac = cync_device['mac']
+                    if btmac:
+                        if isinstance(btmac, int):
+                            logger.warning(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'mac' is somehow an int -> {btmac}, please quote the mac address to force it to a string in the config file")
+
+                if 'wifi_mac' in cync_device:
+                    wmac = cync_device['wifi_mac']
+                    if wmac:
+                        if isinstance(wmac, int):
+                            logger.debug(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> {wmac}, please quote the mac address to force it to a string in the config file")
+
                 new_device = CyncDevice(
                     name=device_name,
                     cync_id=cync_id,
                     fw_version=fw_version,
                     home_id=home_id,
+                    mac=btmac,
+                    wifi_mac=wmac,
                 )
+                self._ids_from_config.append(new_device.hass_id)
                 for attrset in (
                     "is_plug",
                     "supports_temperature",
                     "supports_rgb",
-                    "mac",
-                    "wifi_mac",
                     "ip",
                     "type",
                 ):
@@ -3959,8 +3972,7 @@ class MQTTClient:
             await self.client.__aexit__(None, None, None)
         except aiomqtt.MqttError:
             pass
-        finally:
-            self._connected = False
+        self._connected = False
         logger.debug(f"{lp} Connecting to MQTT broker...")
         try:
             await self.client.__aenter__()
@@ -3969,15 +3981,6 @@ class MQTTClient:
             logger.error(
                 f"{lp} Connection failed [MqttError] -> {mqtt_err_exc}"
             )
-        except aiomqtt.exceptions.MqttConnectError as mqtt_conn_exc:
-            logger.error(
-                f"{lp} Connection failed [ConnectError] -> (rc: {mqtt_conn_exc.rc}) // STR-> {mqtt_conn_exc}"
-            )
-        except aiomqtt.MqttCodeError as mqtt_ce:
-            logger.error(
-                f"{lp} Connection failed [CodeError] (rc: {mqtt_ce.rc}) -> {mqtt_ce}",
-            )
-
         else:
             self._connected = True
             logger.info(f"{lp} Connected to MQTT broker: {self.broker_host} port: {self.broker_port}")
@@ -4153,10 +4156,8 @@ class MQTTClient:
                 _ = await self.client.publish(
                     f"{self.topic}/availability/{device_uuid}", availability, qos=0
                 )
-            except aiomqtt.MqttCodeError as mqtt_code_exc:
-                # from paho.mqtt.reasoncodes import ReasonCode
-                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) // STR-> {mqtt_code_exc}")
-                # check codes and sent self._connected appropriately
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
                 self._connected = False
             else: 
                 return True
@@ -4172,14 +4173,14 @@ class MQTTClient:
             mqtt_dev_state = power_status.encode()  # send ON or OFF if plug
         else:
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()  # send JSON
-        return await self.send_device_msg(device, mqtt_dev_state)
+        return await self.send_device_status(device, mqtt_dev_state)
 
     async def update_brightness(self, device: CyncDevice, bri: int) -> bool:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         device.online = True
         device.brightness = bri
         mqtt_dev_state = {"brightness": bri}
-        return await self.send_device_msg(device, json.dumps(mqtt_dev_state).encode())
+        return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
 
     async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
@@ -4190,7 +4191,7 @@ class MQTTClient:
             device.red = 0
             device.green = 0
             device.blue = 0
-            return await self.send_device_msg(device, json.dumps(mqtt_dev_state).encode())
+            return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
         return False
 
     async def update_rgb(self, device: CyncDevice, rgb: tuple[int, int, int]) -> bool:
@@ -4210,10 +4211,10 @@ class MQTTClient:
             device.green = rgb[1]
             device.blue = rgb[2]
             device.temperature = 254
-            return await self.send_device_msg(device, json.dumps(mqtt_dev_state).encode())
+            return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
         return False
 
-    async def send_device_msg(self, device: CyncDevice, msg: bytes) -> bool:
+    async def send_device_status(self, device: CyncDevice, msg: bytes) -> bool:
         lp = f"{self.lp}device_status:"
         if self._connected:
             tpc = f"{self.topic}/status/{device.hass_id}"
@@ -4225,13 +4226,9 @@ class MQTTClient:
                     qos=0,
                     timeout=3.0,
                 )
-            except aiomqtt.MqttCodeError as mqtt_code_exc:
-                # from paho.mqtt.reasoncodes import ReasonCode
-                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
-                # check codes and sent self._connected appropriately
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
                 self._connected = False
-            except Exception as e:
-                logger.warning(f"{lp} [Exception] -> {e}")
             else:
                 return True
         return False
@@ -4287,7 +4284,7 @@ class MQTTClient:
                     )
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
 
-        return await self.send_device_msg(device, mqtt_dev_state)
+        return await self.send_device_status(device, mqtt_dev_state)
 
     async def send_birth_msg(self) -> bool:
         lp = f"{self.lp}send_birth_msg:"
@@ -4300,13 +4297,9 @@ class MQTTClient:
                     qos=0,
                     retain=True,
                 )
-            except aiomqtt.MqttCodeError as mqtt_code_exc:
-                # from paho.mqtt.reasoncodes import ReasonCode
-                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
-                # check codes and sent self._connected appropriately
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
                 self._connected = False
-            except Exception as e:
-                logger.warning(f"{lp} [Exception] -> {e}")
             else:
                 return True
         return False
@@ -4322,10 +4315,8 @@ class MQTTClient:
                     qos=0,
                     retain=True,
                 )
-            except aiomqtt.MqttCodeError as mqtt_code_exc:
-                # from paho.mqtt.reasoncodes import ReasonCode
-                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
-                # check codes and sent self._connected appropriately
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
                 self._connected = False
             except Exception as e:
                 logger.warning(f"{lp} [Exception] -> {e}")
@@ -4341,7 +4332,7 @@ class MQTTClient:
             logger.info(f"{lp} Starting device discovery...")
             try:
                 for device in g.server.devices.values():
-                    device_uuid = f"{device.home_id}-{device.id}"
+                    device_uuid = device.hass_id
                     # unique_id = device.mac.replace(":", "").casefold()
                     unique_id = f"{device.home_id}_{device.id}"
                     obj_id = f"cync_lan_{unique_id}"
