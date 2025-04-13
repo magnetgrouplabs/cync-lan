@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from functools import partial
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Callable, Coroutine, Any
+from typing import Dict, List, Optional, Tuple, Union, Coroutine
 
 import aiomqtt
 import requests
