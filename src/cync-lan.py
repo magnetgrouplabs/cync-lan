@@ -4002,7 +4002,9 @@ class MQTTClient:
         except Exception as exc:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
 
-        logger.debug(f"{lp} END OF MQTT start()")
+        logger.debug(f"{lp} END OF MQTT start(), no more attempts to connect to the MQTT broker will be made, therefore we exit...")
+        # send sigterm to bring async loop down, this should restart the docker container
+        os.kill(os.getpid(), signal.SIGTERM)
 
     async def start_listening(self):
         """Start listening for MQTT messages on subscribed topics"""
