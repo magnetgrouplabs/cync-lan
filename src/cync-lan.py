@@ -30,11 +30,12 @@ __version__: str = "0.1.12"
 CYNC_VERSION: str = __version__
 REPO_URL: str = "https://github.com/baudneo/cync-lan"
 DEVICE_LWT_MSG: bytes = b"offline"
+CYNC_MQTT_CONN_DELAY = os.environ.get("CYNC_MQTT_CONN_DELAY", 10)
 
 # This will run an async task every x seconds to check if any device is offline or online.
 # Hopefully keeps devices in sync (seems to do pretty good).
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
-CYNC_MESH_CHECK_INTERVAL: int = int(os.environ.get("CYNC_MESH_CHECK", 30)) or 30
+CYNC_MESH_CHECK_INTERVAL: int = 30
 CYNC_MQTT_URL = os.environ.get("CYNC_MQTT_URL")
 CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
 CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
@@ -3827,67 +3828,8 @@ class CyncHTTPDevice:
         self._writer = value
 
 
-# Most of the mqtt code came from cync2mqtt
-
-
 class MQTTClient:
-    # from cync2mqtt
-
     lp: str = "mqtt:"
-
-    availability = False
-
-    async def pub_online(self, device_id: int, status: bool):
-        lp = f"{self.lp}pub_online:"
-        if device_id not in g.server.devices:
-            logger.error(
-                f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
-                f"You may need to re-export devices from your Cync account!"
-            )
-            return
-        availability = b"online" if status else b"offline"
-        device: CyncDevice = g.server.devices[device_id]
-        device_uuid = f"{device.home_id}-{device_id}"
-        # logger.debug(f"{lp} Publishing availability: {availability}")
-        # check if client is online, if not, create a method that will
-        try:
-            _ = await self.client.publish(
-                f"{self.topic}/availability/{device_uuid}", availability, qos=0
-            )
-        except aiomqtt.exceptions.MqttCodeError as mqtt_exc:
-            logger.warning(f"{lp} MQTTCodeError: {mqtt_exc}")
-
-    async def connect(self) -> bool:
-        lp = f"{self.lp}connect:"
-        try:
-            await self.client.__aexit__(None, None, None)
-        except Exception as innr_exc:
-            pass
-        logger.debug(f"{lp} Connecting to MQTT broker...")
-        try:
-            _ = await self.client.__aenter__()
-        except (aiomqtt.MqttCodeError, aiomqtt.MqttError) as mqtt_ce:
-            logger.error(
-                "%s Connection failed: %s" % (lp, mqtt_ce),
-            )
-            try:
-                await self.client.__aexit__(None, None, None)
-            except Exception as innr_exc:
-                pass
-            # if "name or service not known" in str(innr_exc).casefold():
-            #     logger.critical(f"{lp} MQTT broker host is not replying, please check if the MQTT broker is up or if you have a typo in the host address/name")
-            #     # send sigterm to bring async loop down
-            #     os.kill(os.getpid(), signal.SIGTERM)
-
-        else:
-            logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
-            self._connected = True
-            await self.send_birth_msg()
-            await asyncio.sleep(1)
-            await self.homeassistant_discovery()
-            return True
-        return False
-
 
     def __init__(
         self,
@@ -3900,9 +3842,8 @@ class MQTTClient:
     ):
         global g
 
-        self.shutdown_complete: bool = False
         self._connected = False
-        self.tasks: Optional[List[asyncio.Task]] = None
+        self.tasks: Optional[List[Union[asyncio.Task, Coroutine]]] = None
         lp = f"{self.lp}init:"
         if topic is None:
             if not CYNC_TOPIC:
@@ -3953,8 +3894,8 @@ class MQTTClient:
         try:
             while True:
                 itr += 1
-                _connected = await self.connect()
-                if _connected:
+                self._connected = await self.connect()
+                if self._connected:
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
                         for device_id, device in g.server.devices.items():
@@ -3994,7 +3935,13 @@ class MQTTClient:
                         logger.warning(f"{lp} MQTT error: {msg_err}")
                         continue
                 else:
-                    delay = 5
+                    delay = CYNC_MQTT_CONN_DELAY
+                    if delay is None:
+                        delay = 5
+                    elif delay <= 0:
+                        logger.debug(f"{lp} MQTT connection delay is less than or equal to 0, which is probably a typo, setting to 5...")
+                        delay = 5
+
                     logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
                     await asyncio.sleep(delay)
         except asyncio.CancelledError as c_exc:
@@ -4005,6 +3952,40 @@ class MQTTClient:
         logger.debug(f"{lp} END OF MQTT start(), no more attempts to connect to the MQTT broker will be made, therefore we exit...")
         # send sigterm to bring async loop down, this should restart the docker container
         os.kill(os.getpid(), signal.SIGTERM)
+        
+    async def connect(self) -> bool:
+        lp = f"{self.lp}connect:"
+        try:
+            await self.client.__aexit__(None, None, None)
+        except aiomqtt.MqttError:
+            pass
+        finally:
+            self._connected = False
+        logger.debug(f"{lp} Connecting to MQTT broker...")
+        try:
+            await self.client.__aenter__()
+        except aiomqtt.MqttError as mqtt_err_exc:
+            # -> [Errno 111] Connection refused
+            logger.error(
+                f"{lp} Connection failed [MqttError] -> {mqtt_err_exc}"
+            )
+        except aiomqtt.exceptions.MqttConnectError as mqtt_conn_exc:
+            logger.error(
+                f"{lp} Connection failed [ConnectError] -> (rc: {mqtt_conn_exc.rc}) // STR-> {mqtt_conn_exc}"
+            )
+        except aiomqtt.MqttCodeError as mqtt_ce:
+            logger.error(
+                f"{lp} Connection failed [CodeError] (rc: {mqtt_ce.rc}) -> {mqtt_ce}",
+            )
+
+        else:
+            self._connected = True
+            logger.info(f"{lp} Connected to MQTT broker: {self.broker_host} port: {self.broker_port}")
+            await self.send_birth_msg()
+            await asyncio.sleep(1)
+            await self.homeassistant_discovery()
+            return True
+        return False
 
     async def start_listening(self):
         """Start listening for MQTT messages on subscribed topics"""
@@ -4132,31 +4113,54 @@ class MQTTClient:
                             f"{lp} Unknown HASS status message: {payload}"
                         )
 
-
     async def stop(self):
         lp = f"{self.lp}stop:"
         # set all devices offline
-        logger.debug(f"{lp} Setting all devices offline...")
-        for device_id, device in g.server.devices.items():
-            await self.pub_online(device_id, False)
+        if self._connected:
+            logger.debug(f"{lp} Setting all devices offline...")
+            for device_id, device in g.server.devices.items():
+                await self.pub_online(device_id, False)
+
+        await self.send_will_msg()
         try:
             logger.debug(
                 f"{lp} Calling disconnect..."
             )
-            await self.send_will_msg()
             await self.client.__aexit__(None, None, None)
-        except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as ce:
-            logger.error(
-                "%s MQTT disconnect failed: %s" % (lp, ce),
-                exc_info=True,
-            )
+        except aiomqtt.MqttError as ce:
+            logger.warning("%s MQTT disconnect failed: %s" % (lp, ce))
         except Exception as e:
             logger.warning("%s MQTT disconnect failed: %s" % (lp, e), exc_info=True)
         else:
-            logger.info(f"{lp} MQTT client gracefully disconnected...")
-
-        logger.debug(f"{lp} Signalling MQTT client shutdown complete...")
-        self.shutdown_complete = True
+            logger.info(f"{lp} MQTT client disconnected...")
+        finally:
+            self._connected = False
+            
+    async def pub_online(self, device_id: int, status: bool) -> bool:
+        lp = f"{self.lp}pub_online:"
+        if self._connected:
+            if device_id not in g.server.devices:
+                logger.error(
+                    f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                    f"You may need to re-export devices from your Cync account!"
+                )
+                return False
+            availability = b"online" if status else b"offline"
+            device: CyncDevice = g.server.devices[device_id]
+            device_uuid = f"{device.home_id}-{device_id}"
+            # logger.debug(f"{lp} Publishing availability: {availability}")
+            try:
+                _ = await self.client.publish(
+                    f"{self.topic}/availability/{device_uuid}", availability, qos=0
+                )
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
+                # from paho.mqtt.reasoncodes import ReasonCode
+                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) // STR-> {mqtt_code_exc}")
+                # check codes and sent self._connected appropriately
+                self._connected = False
+            else: 
+                return True
+        return False
 
     async def update_device_state(self, device: CyncDevice, state: int) -> bool:
         """Update the device state and publish to MQTT for HASS devices to update."""
@@ -4177,7 +4181,7 @@ class MQTTClient:
         mqtt_dev_state = {"brightness": bri}
         return await self.send_device_msg(device, json.dumps(mqtt_dev_state).encode())
 
-    async def update_temperature(self, device: CyncDevice, temp: int):
+    async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
         device.online = True
         if device.supports_temperature:
@@ -4189,7 +4193,7 @@ class MQTTClient:
             return await self.send_device_msg(device, json.dumps(mqtt_dev_state).encode())
         return False
 
-    async def update_rgb(self, device: CyncDevice, rgb: tuple[int, int, int]):
+    async def update_rgb(self, device: CyncDevice, rgb: tuple[int, int, int]) -> bool:
         """Update the device RGB and publish to MQTT for HASS devices to update. Intended for callbacks"""
         device.online = True
         if device.supports_rgb and (
@@ -4211,23 +4215,26 @@ class MQTTClient:
 
     async def send_device_msg(self, device: CyncDevice, msg: bytes) -> bool:
         lp = f"{self.lp}device_status:"
-        ret = False
-        tpc = f"{self.topic}/status/{device.hass_id}"
-        logger.debug(f"{lp} Sending {msg} for device: '{device.name}' (ID: {device.id})")
-        try:
-            await self.client.publish(
-                tpc,
-                msg,
-                qos=0,
-                timeout=3.0,
-            )
-        except Exception as e:
-            logger.warning(f"{lp} publish exception: {e}")
-        else:
-            ret = True
-        finally:
-            return ret
-
+        if self._connected:
+            tpc = f"{self.topic}/status/{device.hass_id}"
+            logger.debug(f"{lp} Sending {msg} for device: '{device.name}' (ID: {device.id})")
+            try:
+                await self.client.publish(
+                    tpc,
+                    msg,
+                    qos=0,
+                    timeout=3.0,
+                )
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
+                # from paho.mqtt.reasoncodes import ReasonCode
+                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                # check codes and sent self._connected appropriately
+                self._connected = False
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                return True
+        return False
 
     async def parse_device_status(
         self, device_id: int, device_status: DeviceStatus, *args, **kwargs
@@ -4239,7 +4246,7 @@ class MQTTClient:
                 f"{lp} Device ID {device_id} not found! Device may be disabled in config file or "
                 f"you may need to re-export devices from your Cync account"
             )
-            return
+            return False
         device: CyncDevice = g.server.devices[device_id]
         # if device.build_status() == device_status:
         #     # logger.debug(f"{lp} Device status unchanged, skipping...")
@@ -4249,20 +4256,6 @@ class MQTTClient:
 
         if device.is_plug:
             mqtt_dev_state = power_status.encode()
-            # try:
-            #     await asyncio.wait_for(
-            #         self.client.publish(
-            #             tpc,
-            #             power_status.encode(),
-            #             qos=QOS_0,
-            #             # retain=True,
-            #         ),
-            #         timeout=3.0,
-            #     )
-            # except asyncio.TimeoutError:
-            #     logger.exception(f"{lp} Timeout waiting for MQTT publish")
-            # except Exception as e:
-            #     logger.exception(f"{lp} publish exception: {e}")
 
         else:
             if device_status.brightness is not None:
@@ -4293,125 +4286,149 @@ class MQTTClient:
                         device_status.temperature
                     )
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
-        # logger.debug(
-        #     f"{lp} Converting HTTP status to MQTT => {tpc} "
-        #     + json.dumps(mqtt_dev_state)
-        # )
 
         return await self.send_device_msg(device, mqtt_dev_state)
 
-    async def send_birth_msg(self):
+    async def send_birth_msg(self) -> bool:
         lp = f"{self.lp}send_birth_msg:"
-        logger.debug(f"{lp} Sending birth message ({CYNC_HASS_BIRTH_MSG}) to {self.topic}/status")
-        try:
-            await self.client.publish(
-                f"{self.topic}/status",
-                CYNC_HASS_BIRTH_MSG.encode(),
-                qos=0,
-                retain=True,
-            )
-        except Exception as e:
-            logger.error(f"{lp} Unable to publish mqtt message: {e}")
+        if self._connected:
+            logger.debug(f"{lp} Sending birth message ({CYNC_HASS_BIRTH_MSG}) to {self.topic}/status")
+            try:
+                await self.client.publish(
+                    f"{self.topic}/status",
+                    CYNC_HASS_BIRTH_MSG.encode(),
+                    qos=0,
+                    retain=True,
+                )
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
+                # from paho.mqtt.reasoncodes import ReasonCode
+                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                # check codes and sent self._connected appropriately
+                self._connected = False
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                return True
+        return False
 
-    async def send_will_msg(self):
+    async def send_will_msg(self) -> bool:
         lp = f"{self.lp}send_will_msg:"
-        logger.debug(f"{lp} Sending will message ({CYNC_HASS_WILL_MSG}) to {self.topic}/status")
-        try:
-            await self.client.publish(
-                f"{self.topic}/status",
-                CYNC_HASS_WILL_MSG.encode(),
-                qos=0,
-                retain=True,
-            )
-        except Exception as e:
-            logger.error(f"{lp} Unable to publish mqtt message: {e}")
+        if self._connected:
+            logger.debug(f"{lp} Sending will message ({CYNC_HASS_WILL_MSG}) to {self.topic}/status")
+            try:
+                await self.client.publish(
+                    f"{self.topic}/status",
+                    CYNC_HASS_WILL_MSG.encode(),
+                    qos=0,
+                    retain=True,
+                )
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
+                # from paho.mqtt.reasoncodes import ReasonCode
+                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                # check codes and sent self._connected appropriately
+                self._connected = False
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                return True
+        return False
 
-    async def homeassistant_discovery(self):
+    async def homeassistant_discovery(self) -> bool:
+        """Build each configured Cync device for HASS device registry"""
         lp = f"{self.lp}hass:"
-        logger.info(f"{lp} Starting device discovery...")
-        try:
-            for device in g.server.devices.values():
-                device_uuid = f"{device.home_id}-{device.id}"
-                # unique_id = device.mac.replace(":", "").casefold()
-                unique_id = f"{device.home_id}_{device.id}"
-                obj_id = f"cync_lan_{unique_id}"
-                origin_struct = {
-                    "name": "cync-lan",
-                    "sw_version": CYNC_VERSION,
-                    "support_url": REPO_URL,
-                }
-                dev_fw_version = str(device.version)
-                ver_str = "Unknown"
-                fw_len = len(dev_fw_version)
-                if fw_len == 5:
-                    if dev_fw_version != 00000:
-                        ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}.{dev_fw_version[2:]}"
-                elif fw_len == 2:
-                    ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}"
-                model_str = "Unknown"
-                if device.type in type_2_str:
-                    model_str = type_2_str[device.type]
-                device_struct = {
-                    "identifiers": [unique_id],
-                    "manufacturer": "Savant",
-                    "connections": [("mac", device.mac.casefold())],
-                    "name": device.name,
-                    "sw_version": ver_str,
-                    "model": model_str,
-                }
-                dev_registry_conf = {
-                    "object_id": obj_id,
-                    # set to None if only device name is relevant, this sets entity name
-                    "name": None,
-                    "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
-                    "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
-                    "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
-                    "pl_avail": "online",
-                    "color_temp_kelvin": True,
-                    "pl_not_avail": "offline",
-                    "state_on": "ON",
-                    "state_off": "OFF",
-                    "unique_id": unique_id,
-                    "schema": "json",
-                    "origin": origin_struct,
-                    "device": device_struct,
-                    "optimistic": False,
-                }
-                dev_type = "light"
-                tpc_str_template = "{0}/{1}/{2}/config"
+        ret = False
+        if self._connected:
+            logger.info(f"{lp} Starting device discovery...")
+            try:
+                for device in g.server.devices.values():
+                    device_uuid = f"{device.home_id}-{device.id}"
+                    # unique_id = device.mac.replace(":", "").casefold()
+                    unique_id = f"{device.home_id}_{device.id}"
+                    obj_id = f"cync_lan_{unique_id}"
+                    origin_struct = {
+                        "name": "cync-lan",
+                        "sw_version": CYNC_VERSION,
+                        "support_url": REPO_URL,
+                    }
+                    dev_fw_version = str(device.version)
+                    ver_str = "Unknown"
+                    fw_len = len(dev_fw_version)
+                    if fw_len == 5:
+                        if dev_fw_version != 00000:
+                            ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}.{dev_fw_version[2:]}"
+                    elif fw_len == 2:
+                        ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}"
+                    model_str = "Unknown"
+                    if device.type in type_2_str:
+                        model_str = type_2_str[device.type]
+                    device_struct = {
+                        "identifiers": [unique_id],
+                        "manufacturer": "Savant",
+                        "connections": [("mac", device.mac.casefold())],
+                        "name": device.name,
+                        "sw_version": ver_str,
+                        "model": model_str,
+                    }
+                    dev_registry_conf = {
+                        "object_id": obj_id,
+                        # set to None if only device name is relevant, this sets entity name
+                        "name": None,
+                        "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
+                        "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
+                        "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
+                        "pl_avail": "online",
+                        "color_temp_kelvin": True,
+                        "pl_not_avail": "offline",
+                        "state_on": "ON",
+                        "state_off": "OFF",
+                        "unique_id": unique_id,
+                        "schema": "json",
+                        "origin": origin_struct,
+                        "device": device_struct,
+                        "optimistic": False,
+                    }
+                    dev_type = "light"
+                    tpc_str_template = "{0}/{1}/{2}/config"
 
-                if device.is_plug:
-                    dev_type = "switch"
-                else:
-                    dev_registry_conf.update({"brightness": True, "brightness_scale": 100})
-                    if device.supports_temperature or device.supports_rgb:
-                        dev_registry_conf["supported_color_modes"] = []
-                        if device.supports_temperature:
-                            dev_registry_conf["supported_color_modes"].append("color_temp")
-                            dev_registry_conf["max_kelvin"] = self.cync_maxk
-                            dev_registry_conf["min_kelvin"] = self.cync_mink
-                        if device.supports_rgb:
-                            dev_registry_conf["supported_color_modes"].append("rgb")
-                            dev_registry_conf["effect"] = True
-                            dev_registry_conf["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
+                    if device.is_plug:
+                        dev_type = "switch"
+                    else:
+                        dev_registry_conf.update({"brightness": True, "brightness_scale": 100})
+                        if device.supports_temperature or device.supports_rgb:
+                            dev_registry_conf["supported_color_modes"] = []
+                            if device.supports_temperature:
+                                dev_registry_conf["supported_color_modes"].append("color_temp")
+                                dev_registry_conf["max_kelvin"] = self.cync_maxk
+                                dev_registry_conf["min_kelvin"] = self.cync_mink
+                            if device.supports_rgb:
+                                dev_registry_conf["supported_color_modes"].append("rgb")
+                                dev_registry_conf["effect"] = True
+                                dev_registry_conf["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
 
-                tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
-                try:
-                    _ = await self.client.publish(
-                        tpc, json.dumps(dev_registry_conf).encode(), qos=0, retain=False
-                    )
-                except Exception as e:
-                    logger.error(
-                        "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
-                    )
-                # logger.debug(
-                #     f"{lp} {tpc}  "
-                #     + json.dumps(dev_cfg)
-                # )
-        except Exception as e:
-            logger.error(f"{lp} Discovery failed: {e}", exc_info=True)
-        logger.debug(f"{lp} Discovery complete")
-
+                    tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
+                    try:
+                        _ = await self.client.publish(
+                            tpc, json.dumps(dev_registry_conf).encode(), qos=0, retain=False
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
+                        )
+                    # logger.debug(
+                    #     f"{lp} {tpc}  "
+                    #     + json.dumps(dev_cfg)
+                    # )
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
+                # from paho.mqtt.reasoncodes import ReasonCode
+                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                # check codes and sent self._connected appropriately
+                self._connected = False
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                ret = True
+        logger.debug(f"{lp} Discovery complete (success: {ret})")
+        return ret
 
     def kelvin2cync(self, k):
         """Convert Kelvin value to Cync white temp (0-100) with step size: 1"""

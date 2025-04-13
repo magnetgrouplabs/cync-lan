@@ -28,6 +28,9 @@ services:
 #      CYNC_MQTT_PASS: "password"
 #      CYNC_TOPIC: "cync_lan"
 #      CYNC_HASS_TOPIC: "homeassistant"
+      # Whenever cync-lan is d/c from mqtt broker, it will wait this long before trying to reconnect.
+#      CYNC_MQTT_CONN_DELAY: 10
+
 
       # CyncLAN server options
 #      CYNC_CERT: "/root/cync-lan/certs/cert.pem"
@@ -36,6 +39,8 @@ services:
 #      CYNC_PORT: 23779
     # Debug logging
 #      CYNC_DEBUG: 1
+    # Raw binary data logging, useful for new devices that are working but
+    # not all functionality is exposed.
 #      CYNC_RAW_DEBUG: 1
     networks:
       - cync-lan
