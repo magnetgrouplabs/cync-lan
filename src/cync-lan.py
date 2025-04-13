@@ -4352,10 +4352,15 @@ class MQTTClient:
                     model_str = "Unknown"
                     if device.type in type_2_str:
                         model_str = type_2_str[device.type]
+                    dev_connections = [("bluetooth", device.mac.casefold())]
+                    if not device.is_bt_only():
+                        dev_connections.append(("mac", device.wifi_mac.casefold()))
+                        # 'Mom's Lamp 1' (ID: 15) // mac: 26616350814
+                        # wifi_mac TYPE: <class 'int'> VALUE: 26616350815
                     device_struct = {
                         "identifiers": [unique_id],
                         "manufacturer": "Savant",
-                        "connections": [("mac", device.mac.casefold())],
+                        "connections": dev_connections,
                         "name": device.name,
                         "sw_version": ver_str,
                         "model": model_str,
