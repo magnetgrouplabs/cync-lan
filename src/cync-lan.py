@@ -3003,7 +3003,7 @@ class CyncHTTPDevice:
                                         (extracted.hex(" "), bytes2list(status_struct))
                                     )
 
-                                    await g.server.parse_status(status_struct)
+                                    # await g.server.parse_status(status_struct)
                                 # broadcast status data
                                 # await self.write(data, broadcast=True)
                             (
