@@ -3459,23 +3459,26 @@ class CyncHTTPDevice:
                                     else None
                                 )
 
-                                if ctrl_bytes[0] == 0xF9 and ctrl_bytes[1] in (0xD0, 0xF0):
+                                if ctrl_bytes[0] == 0xF9 and ctrl_bytes[1] in (0xD0, 0xF0, 0xE2):
                                     # control packet ack - changed state.
                                     # handle callbacks for messages
                                     # byte 8 is success? 0x01 yes // 0x00 no
-                                    # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e
+                                    # 7e 09 00 00 00 f9 d0 01 00 00 d1 7e <-- original ACK
                                     # 7e 09 00 00 00 f9 f0 01 00 00 f1 7e <-- newer LED strip controller
-                                    # byte 7 (f0) + 8 (01) = checksum (f1)
+                                    # 7e 09 00 00 00 f9 e2 01 00 00 e3 7e <-- Cync default light show / effect
+                                    # bytes 7 - 10 SUM --> (f0) + (01) = checksum (f1) byte 11
                                     ctrl_msg_id = packet_data[1]
+                                    ctrl_chksum = sum(packet_data[6:10]) % 256
                                     success = packet_data[7] == 1
                                     # todo: possible cleanup for missed callbacks
                                     msg = self.messages.control.pop(ctrl_msg_id, None)
                                     if success is True and msg is not None:
                                         if msg.sent_by == self.address:
-                                            # logger.debug(f"{lp} CONTROL packet ACK (success: {success}) callback found -> {msg}")
+                                            # logger.debug(f"{lp} CONTROL packet ACK (success: {success} / chksum: {ctrl_chksum == packet_data[10]}) callback found -> {msg}")
                                             await msg.callback
                                     elif success is True and msg is None:
-                                        logger.debug(f"{lp} CONTROL packet ACK (success: {success}) callback NOT found for msg ID: {ctrl_msg_id}")
+                                        logger.debug(f"{lp} CONTROL packet ACK (success: {success} / chksum: {ctrl_chksum == packet_data[10]}) callback NOT found for msg ID: {ctrl_msg_id}")
+                                    logger.debug(f"{lp} DEBUG>>> callback msg queue length: {len(self.messages.control)}")
                                 # newer firmware devices seen in led light strip so far,
                                 # send their firmware version data in a 0x7e bound struct.
                                 # I've also seen these ctrl bytes in the msg that other devices send in FA AF
@@ -3841,10 +3844,10 @@ class MQTTClient:
                 await self.client.__aexit__(None, None, None)
             except Exception as innr_exc:
                 pass
-            if "name or service not known" in str(ce).casefold():
-                logger.critical(f"{lp} MQTT broker host is not replying, please check if the MQTT broker is up or if you have a typo in the host address/name")
-                # send sigterm to bring async loop down
-                os.kill(os.getpid(), signal.SIGTERM)
+            # if "name or service not known" in str(innr_exc).casefold():
+            #     logger.critical(f"{lp} MQTT broker host is not replying, please check if the MQTT broker is up or if you have a typo in the host address/name")
+            #     # send sigterm to bring async loop down
+            #     os.kill(os.getpid(), signal.SIGTERM)
 
         else:
             logger.info("%s Connected to MQTT broker: %s port: %s" % (lp, self.broker_host, self.broker_port))
@@ -3996,15 +3999,20 @@ class MQTTClient:
                             continue
 
                         if "state" in json_data and "brightness" not in json_data:
-                            if json_data["state"].upper() == "ON":
-                                tasks.append(device.set_power(1))
+                            if "effect" in json_data:
+                                effect = json_data["effect"]
+                                tasks.append(device.set_lightshow(effect))
                             else:
-                                tasks.append(device.set_power(0))
+                                if json_data["state"].upper() == "ON":
+                                    tasks.append(device.set_power(1))
+                                else:
+                                    tasks.append(device.set_power(0))
                         if "brightness" in json_data:
                             lum = int(json_data["brightness"])
                             # if 5 > lum > 0:
                             #     lum = 5
                             tasks.append(device.set_brightness(lum))
+
                         if "color_temp" in json_data:
                             tasks.append(
                                 device.set_temperature(
