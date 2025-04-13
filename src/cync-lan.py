@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import getpass
+import hashlib
 import json
 import logging
 import os
@@ -406,6 +407,33 @@ class Messages:
         self.control = dict()
         self.lp = "Messages"
 
+
+def md5sum(filepath: Path):
+    """Calculates the MD5 checksum of a file.
+
+    Args:
+        filepath (pathlib.Path): The path to the file.
+
+    Returns:
+        str: The hexadecimal representation of the MD5 checksum.
+             Returns None if the file cannot be opened.
+    """
+    lp = "CyncLAN:"
+    try:
+        with filepath.open('rb') as f:
+            m = hashlib.md5()
+            while True:
+                data = f.read(4096)  # Read in chunks to handle large files
+                if not data:
+                    break
+                m.update(data)
+            return m.hexdigest()
+    except FileNotFoundError:
+        logger.warning(f"{lp} File not found at {filepath.expanduser().resolve().as_posix()}")
+        return None
+    except Exception as e:
+        logger.exception(f"{lp} An error occurred: {e}")
+        return None
 
 class CyncCloudAPI:
     api_timeout: int = 5
@@ -2362,7 +2390,7 @@ class CyncLanServer:
             os.kill(os.getpid(), signal.SIGTERM)
         else:
             logger.info(
-                f"{self.lp} Started (ver. {__version__}), bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f"{self.lp} Started (ver. {__version__}) [md5sum: {md5sum(Path(__file__))}], bound to {self.host}:{self.port} - Waiting for connections, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
             try:
