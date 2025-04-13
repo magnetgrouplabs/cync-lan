@@ -161,10 +161,10 @@ FACTORY_EFFECTS_BYTES = {
             "fireworks": (int(0x3A), int(0xDA)),
             "volcanic": (int(0x04), int(0xF4)),
             "aurora": (int(0x05), int(0x1C)),
-            "happyholidays": (int(0x06), int(0x54)),
-            "redwhiteblue": (int(0x07), int(0x4F)),
+            "happy_holidays": (int(0x06), int(0x54)),
+            "red_white_blue": (int(0x07), int(0x4F)),
             "vegas": (int(0x08), int(0xE3)),
-            "partytime": (int(0x09), int(0x06)),
+            "party_time": (int(0x09), int(0x06)),
         }
 
 @dataclass
