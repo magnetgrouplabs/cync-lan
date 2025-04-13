@@ -3953,46 +3953,50 @@ class MQTTClient:
         try:
             while True:
                 itr += 1
-                await self.connect()
-                await self.homeassistant_discovery()
-                if itr == 1:
-                    logger.debug(f"{lp} Seeding all devices: offline")
-                    for device_id, device in g.server.devices.items():
-                        await self.pub_online(device_id, False)
-                elif itr > 1:
-                    tasks = []
-                    # set the device online/offline and set its status
-                    for device in g.server.devices.values():
-                        tasks.append(self.pub_online(device.id, device.online))
-                        tasks.append(
-                            self.parse_device_status(
-                                device.id,
-                                DeviceStatus(
-                                    state=device.state,
-                                    brightness=device.brightness,
-                                    temperature=device.temperature,
-                                    red=device.red,
-                                    green=device.green,
-                                    blue=device.blue,
-                                ),
+                _connected = await self.connect()
+                if _connected:
+                    if itr == 1:
+                        logger.debug(f"{lp} Seeding all devices: offline")
+                        for device_id, device in g.server.devices.items():
+                            await self.pub_online(device_id, False)
+                    elif itr > 1:
+                        tasks = []
+                        # set the device online/offline and set its status
+                        for device in g.server.devices.values():
+                            tasks.append(self.pub_online(device.id, device.online))
+                            tasks.append(
+                                self.parse_device_status(
+                                    device.id,
+                                    DeviceStatus(
+                                        state=device.state,
+                                        brightness=device.brightness,
+                                        temperature=device.temperature,
+                                        red=device.red,
+                                        green=device.green,
+                                        blue=device.blue,
+                                    ),
+                                )
                             )
-                        )
-                    if tasks:
-                        await asyncio.gather(*tasks)
-                logger.debug(f"{lp} Starting MQTT listener...")
-                lp: str = f"{self.lp}rcv:"
-                topics = [
-                    (f"{self.topic}/set/#", 0),
-                    (f"{self.ha_topic}/status", 0),
-                ]
-                await self.client.subscribe(topics)
-                logger.debug(f"{lp} Subscribed to MQTT topics: {[x[0] for x in topics]}. "
-                             f"Waiting for MQTT messages...")
-                try:
-                    await self.start_listening()
-                except aiomqtt.MqttError as msg_err:
-                    logger.warning(f"{lp} MQTT error: {msg_err}")
-                    continue
+                        if tasks:
+                            await asyncio.gather(*tasks)
+                    logger.debug(f"{lp} Starting MQTT listener...")
+                    lp: str = f"{self.lp}rcv:"
+                    topics = [
+                        (f"{self.topic}/set/#", 0),
+                        (f"{self.ha_topic}/status", 0),
+                    ]
+                    await self.client.subscribe(topics)
+                    logger.debug(f"{lp} Subscribed to MQTT topics: {[x[0] for x in topics]}. "
+                                 f"Waiting for MQTT messages...")
+                    try:
+                        await self.start_listening()
+                    except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as msg_err:
+                        logger.warning(f"{lp} MQTT error: {msg_err}")
+                        continue
+                else:
+                    delay = 5
+                    logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
+                    await asyncio.sleep(delay)
         except asyncio.CancelledError as c_exc:
             logger.debug(f"{lp} MQTT start() cancelled: {c_exc}")
         except Exception as exc:
