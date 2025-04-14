@@ -2,7 +2,7 @@ FROM python:3.13-slim-bookworm AS final
 
 #ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV CYNC_VERSION="v0.1.12"
+ENV CYNC_VERSION="0.1.12"
 
 WORKDIR /root/cync-lan
 
@@ -50,7 +50,7 @@ ENV CYNC_MQTT_HOST="homeassistant.local" \
     CYNC_TCP_WHITELIST=""
 
 LABEL org.opencontainers.image.authors="baudneo <86508179+baudneo@users.noreply.github.com>"
-LABEL org.opencontainers.image.version="${CYNC_VERSION}"
+LABEL org.opencontainers.image.version="v${CYNC_VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/baudneo/cync-lan"
 LABEL org.opencontainers.image.description="Local async MQTT controller for Cync/C by GE Wi-Fi devices"
 
