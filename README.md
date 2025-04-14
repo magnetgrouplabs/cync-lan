@@ -46,10 +46,24 @@ You will want to save the virtualenv setup for future use. If you add new device
 Cync account, you need to export the config. Please see [Install docs](./docs/install.md) for more information.
 
 ### Updating Docker Container
-Go to the docker directory for cync-lan (where the docker-compose.yaml file lives) and run:
-```bash
-docker compose pull && docker compose up -d --force-recreate
-````
+
+#### Updating using a new image
+- `cd` to cync-lan docker directory where `docker-compose.yaml` is located
+- run: `docker compose pull && docker compose up -d --force-recreate`
+
+#### 'Upgrade in-place'
+If you want to update the container in-place, you can:
+- `cd` to cync-lan docker directory where `docker-compose.yaml` is located
+- `wget 'https://raw.githubusercontent.com/baudneo/cync-lan/refs/heads/python/src/cync-lan.py'`
+- edit `docker-compose.yaml` and uncomment the bind mount line in volumes for ./cync-lan.py
+    - ```
+      volumes:
+        # Create a ./config dir and place the exported config file in this directory
+        - ./config:/root/cync-lan/config
+        # Want to run custom code or upgrade in place? Bind-mount the custom/upgraded cync-lan.py into the container!
+        #- ./cync-lan.py:/root/cync-lan/cync-lan.py  <---- uncomment this line
+    ```
+- `docker compose up -d --force-recreate` to finalize the upgrade in place.
 
 ## Re-routing / Overriding DNS
 >[!WARNING] 
