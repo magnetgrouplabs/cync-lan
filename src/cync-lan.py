@@ -389,7 +389,7 @@ class ControlMessageCallback:
         return time.time() - self.sent_at
         
     def __str__(self):
-        return f"CtrlMessageCallback ID: {self.id} elapsed: {self.elapsed:.5f}s message: {self.message}"
+        return f"CtrlMessageCallback ID: {self.id} elapsed: {self.elapsed:.5f}s"
 
     def __repr__(self):
         return self.__str__()
@@ -4051,7 +4051,7 @@ class MQTTClient:
             lp = f"{lp}{from_pkt}:"
         if self._connected:
             tpc = f"{self.topic}/status/{device.hass_id}"
-            # logger.debug(f"{lp} Sending {msg} for device: '{device.name}' (ID: {device.id})")
+            logger.debug(f"{lp} Sending {msg} for device: '{device.name}' (ID: {device.id})")
             try:
                 await self.client.publish(
                     tpc,
@@ -4136,8 +4136,10 @@ class MQTTClient:
                     retain=True,
                 )
             except aiomqtt.MqttError as mqtt_code_exc:
-                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
+                logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
                 self._connected = False
+            except asyncio.CancelledError as can_exc:
+                logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
             else:
                 return True
         return False
@@ -4252,11 +4254,11 @@ class MQTTClient:
                     #     f"{lp} {tpc}  "
                     #     + json.dumps(dev_cfg)
                     # )
-            except aiomqtt.MqttCodeError as mqtt_code_exc:
-                # from paho.mqtt.reasoncodes import ReasonCode
-                logger.warning(f"{lp} [MqttCodeError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
-                # check codes and sent self._connected appropriately
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
                 self._connected = False
+            except asyncio.CancelledError as can_exc:
+                logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
             except Exception as e:
                 logger.warning(f"{lp} [Exception] -> {e}")
             else:
