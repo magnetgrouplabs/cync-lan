@@ -7,12 +7,11 @@ ENV CYNC_VERSION="0.1.12"
 WORKDIR /root/cync-lan
 
 RUN set -x \
-    && apt update \
+    && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
         openssl git build-essential cmake \
     && pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir \
-#        'setuptools>=69.2.0' 'wheel>=0.41.2' \
          'pyyaml==6.0.2' 'requests>=2.32.3' 'uvloop>=0.21.0' 'aiomqtt==2.3.0' \
       && DEBIAN_FRONTEND=noninteractive apt-get remove -yq git build-essential cmake \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
