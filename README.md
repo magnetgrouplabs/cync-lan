@@ -38,7 +38,12 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 > You still need to use your Cync account to add new devices as you acquire them.
  
 ## Installation
-Docker and local script supported! Please see [Install docs](./docs/install.md) for more information.
+>[!IMPORTANT]
+> You must create a virtualenv and download the cync-lan.py script in order to export 
+> your Cync devices from the Cync cloud API. Even if you only plan on using a docker set-up.
+
+You will want to save the virtualenv setup for future use. If you add new devices to your 
+Cync account, you need to export the config. Please see [Install docs](./docs/install.md) for more information.
 
 ### Updating Docker Container
 Go to the docker directory for cync-lan (where the docker-compose.yaml file lives) and run:
