@@ -82,24 +82,28 @@ breakdown. Please see the
 > The `CYNC_MQTT_URL` variable is **deprecated** and will be removed in a future release.
 > For now, it will be parsed into `CYNC_MQTT_HOST`, `CYNC_MQTT_PORT`, `CYNC_MQTT_USER`, and `CYNC_MQTT_PASS`.
 
-| Variable                 | Description                             | Default                            |
-|--------------------------|-----------------------------------------|------------------------------------|
-| `CYNC_MQTT_URL`          | **LEGACY** URL of MQTT broker           | `mqtt://homeassistant.local:1883/` |
-| `CYNC_MQTT_HOST`         | Host of MQTT broker                     | `homeassistant.local`              |
-| `CYNC_MQTT_PORT`         | Port of MQTT broker                     | `1883`                             |
-| `CYNC_MQTT_USER`         | Username for MQTT broker                |                                    |
-| `CYNC_MQTT_PASS`         | Password for MQTT broker                |                                    |
-| `CYNC_DEBUG`             | Enable debug logging                    | `0`                                |
-| `CYNC_RAW_DEBUG`         | Enable raw binary message debug logging | `0`                                |
-| `CYNC_CERT`              | Path to cert file                       | `certs/server.pem`                 |
-| `CYNC_KEY`               | Path to key file                        | `certs/server.key`                 |
-| `CYNC_PORT`              | Port to listen on                       | `23779`                            |
-| `CYNC_HOST`              | Host to listen on                       | `0.0.0.0`                          |
-| `CYNC_TOPIC`             | MQTT topic                              | `cync_lan`                         |
-| `CYNC_HASS_TOPIC`        | Home Assistant topic                    | `homeassistant`                    |
-| `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will      | `status`                           |
-| `CYNC_HASS_BIRTH_MSG`    | HASS birth message                      | `online`                           |
-| `CYNC_HASS_WILL_MSG`     | HASS will message                       | `offline`                          |
+| Variable                 | Description                                       | Default               |
+|--------------------------|---------------------------------------------------|-----------------------|
+| `CYNC_MQTT_HOST`         | Host of MQTT broker                               | `homeassistant.local` |
+| `CYNC_MQTT_PORT`         | Port of MQTT broker                               | `1883`                |
+| `CYNC_MQTT_USER`         | Username for MQTT broker                          |                       |
+| `CYNC_MQTT_PASS`         | Password for MQTT broker                          |                       |
+| `CYNC_MQTT_CONN_DELAY`   | Delay between MQTT re-connections (seconds)       | `10`                  |
+| `CYNC_DEBUG`             | Enable debug logging                              | `0`                   |
+| `CYNC_RAW_DEBUG`         | Enable raw binary message debug logging           | `0`                   |
+| `CYNC_CERT`              | Path to cert file                                 | `certs/server.pem`    |
+| `CYNC_KEY`               | Path to key file                                  | `certs/server.key`    |
+| `CYNC_PORT`              | Port to listen on (shouldn't need to change)      | `23779`               |
+| `CYNC_HOST`              | Interface to listen on                            | `0.0.0.0`             |
+| `CYNC_TOPIC`             | MQTT topic                                        | `cync_lan`            |
+| `CYNC_HASS_TOPIC`        | Home Assistant topic                              | `homeassistant`       |
+| `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will                | `status`              |
+| `CYNC_HASS_BIRTH_MSG`    | HASS birth message                                | `online`              |
+| `CYNC_HASS_WILL_MSG`     | HASS will message                                 | `offline`             |
+| `CYNC_CMD_BROADCASTS`    | Number of WiFi devices to send state commands to  | `2`                   |
+| `CYNC_MAX_TCP_CONN`      | Maximum Wifi devices allowed to connect at a time | `8`                   |
+| `CYNC_TCP_WHITELIST`     | Comma separated string of allowed IPs             | Allow ALL IPs         |
+
 
 ## Controlling devices
 Devices are controlled by JSON MQTT messages. This was designed to be used 
