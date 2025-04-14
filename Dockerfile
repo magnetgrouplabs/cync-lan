@@ -45,7 +45,9 @@ ENV CYNC_MQTT_HOST="homeassistant.local" \
     CYNC_HASS_BIRTH_MSG="online" \
     CYNC_HASS_WILL_MSG="offline" \
     CYNC_MQTT_CONN_DELAY=10 \
-    CYNC_CMD_BROADCASTS=2
+    CYNC_CMD_BROADCASTS=2 \
+    CYNC_MAX_TCP_CONN=8 \
+    CYNC_TCP_WHITELIST=""
 
 LABEL org.opencontainers.image.authors="baudneo <86508179+baudneo@users.noreply.github.com>"
 LABEL org.opencontainers.image.version="${CYNC_VERSION}"
