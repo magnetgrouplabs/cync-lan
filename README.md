@@ -34,7 +34,7 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 - **Non Docker:** [Create self-signed SSL certs](./docs/install.md#setup) using `CN=*.xlink.cn` for the server. You can use the `create_certs.sh` script
 - **Optional:** *[Firewall](#firewall) rules to allow cync devices to talk to `cync-lan`* **(VLANs?)**
 
->[!IMPORTANT]
+>[!NOTE]
 > You still need to use your Cync account to add new devices as you acquire them.
  
 ## Installation
