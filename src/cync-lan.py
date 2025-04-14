@@ -24,7 +24,7 @@ import requests
 import uvloop
 import yaml
 
-__version__: str = "0.1.12"
+__version__: str = "0.1.13"
 
 CYNC_VERSION: str = __version__
 SRC_REPO_URL: str = "https://github.com/baudneo/cync-lan"
@@ -34,7 +34,6 @@ CYNC_CMD_BROADCASTS: int = int(os.environ.get("CYNC_CMD_BROADCASTS", 2))
 CYNC_MAX_TCP_CONN: int = int(os.environ.get("CYNC_MAX_TCP_CONN", 8))
 CYNC_TCP_WHITELIST: Optional[Union[str, List[Optional[str]]]] = os.environ.get("CYNC_TCP_WHITELIST")
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
-CYNC_MESH_CHECK_INTERVAL: int = 30
 CYNC_MQTT_URL = os.environ.get("CYNC_MQTT_URL")
 CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
 CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
