@@ -699,43 +699,43 @@ class CyncCloudAPI:
 type_2_str = {
     5: "Tunable White A19 Bulb",
     19: "Tunable White A19 Bulb",
-    21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
-    22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lm]",
-    26: "C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lm]",
-    30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lm]",
-    31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lm]",
+    21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+    22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lum]",
+    26: "C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lum]",
+    30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+    31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lum]",
 
-    37: "Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+    37: "Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
 
-    42: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 18 Inch",
-    43: "Reveal HD+ Full Color Direct Connect Under Cabinet Light - 24 Inch",
+    42: "Reveal HD+ Full Color Under Cabinet Light - 18 Inch",
+    43: "Reveal HD+ Full Color Under Cabinet Light - 24 Inch",
 
-    48: "C by GE (C Start Smart) Direct Connect Switch [CSWDMBLBWF1]",
-    49: "C by GE (C Start Smart) Direct Connect Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+    48: "C by GE (C Start Smart) Switch [CSWDMBLBWF1]",
+    49: "C by GE (C Start Smart) Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
 
 
-    52: "Direct Connect Switch",
-    55: "Direct Connect Dimmer Switch - No Neutral",
-    58: "Direct Connect Switch - No Neutral",
-    59: "Direct Connect Switch",
-    64: "Direct Connect Indoor Plug",
-    68: "Direct Connect Indoor Plug",
+    52: "Switch",
+    55: "Dimmer Switch - No Neutral",
+    58: "Switch - No Neutral",
+    59: "Switch",
+    64: "Indoor Plug",
+    68: "Indoor Plug",
 
     113: "Wire-Free Dimmer with White Temperature Switch (BTLE only)",
 
-    131: "Full Color Direct Connect A19 Bulb",
-    133: "Full Color Direct Connect LED Light Strip Controller",
-    137: "Full Color Direct Connect A19 Bulb",
-    138: "Full Color Direct Connect BR30 Floodlight [CLEDR309CD1-CDN1P 750 lm]",
-    140: "Full Color Direct Connect Outdoor PAR38 Floodlight [CLEDP3815CD1/BSS/CDN 1300 lm]",
-    146: "Full Color Direct Connect Edison ST19 Bulb [CLEDST196CDGS-CDN 500 lm]",
-    147: "Full Color Direct Connect Edison G25 Bulb [CLEDG256CDGS-CDN 500 lm]",
-    148: "Direct Connect White (2700K) Edison ST19 Bulb",
+    131: "Full Color A19 Bulb",
+    133: "Full Color LED Light Strip Controller",
+    137: "Full Color A19 Bulb",
+    138: "Full Color BR30 Floodlight [CLEDR309CD1 750 lum]",
+    140: "Full Color Outdoor PAR38 Floodlight [CLEDP3815CD1 1300 lum]",
+    146: "Full Color Edison ST19 Bulb [CLEDST196CDGS 500 lum]",
+    147: "Full Color Edison G25 Bulb [CLEDG256CDGS 500 lum]",
+    148: "White (2700K) Edison ST19 Bulb",
     152: "Reveal HD+ White (2700K) A19 Bulb",
 
-    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lm]",
+    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lum]",
 
-    224: "Direct Connect Thermostat",
+    224: "Thermostat",
 }
 
 DeviceTypes: Dict[str, List[int]] = {
