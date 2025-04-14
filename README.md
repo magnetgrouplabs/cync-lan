@@ -62,7 +62,7 @@ If you want to update the container in-place, you can:
         - ./config:/root/cync-lan/config
         # Want to run custom code or upgrade in place? Bind-mount the custom/upgraded cync-lan.py into the container!
         #- ./cync-lan.py:/root/cync-lan/cync-lan.py  <---- uncomment this line
-    ```
+      ```
 - `docker compose up -d --force-recreate` to finalize the upgrade in place.
 
 ## Re-routing / Overriding DNS
