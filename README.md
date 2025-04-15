@@ -35,16 +35,15 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 >[!IMPORTANT]
 > You must create a virtualenv and download the cync-lan.py script in order to export 
 > your Cync devices from the Cync cloud API. Even if you only plan on using a docker set-up.
+> > This requires your email, password and the code that will be emailed to you during export.
 
 You will want to save the virtualenv setup for future use. If you add new devices to your 
 Cync account, you need to export the config. Please see [Install docs](./docs/install.md) for more information.
 
 ### Updating Docker Container
-
 #### Updating using a new image
 - `cd` to cync-lan docker directory where `docker-compose.yaml` is located
 - run: `docker compose pull && docker compose up -d --force-recreate`
-
 #### 'Upgrade in-place'
 If you want to update the container in-place, you can:
 - `cd` to cync-lan docker directory where `docker-compose.yaml` is located
@@ -68,17 +67,10 @@ If you want to update the container in-place, you can:
 There are detailed instructions for OPNSense and Pi-hole. 
 See [DNS docs](docs/DNS.md) for more information.
 
+## Tips
+See [Tips](docs/tips.md) for more information on how to get the most out of this project.
+
 ## Config file
-> [!IMPORTANT]
-> It is required to query the Cync cloud API to export all of
-> the devices in each 'home'.
-
-This requires your email, password and
-the code that will be emailed to you during export.
-
-If you add or remove devices, you *should* re-export the config file
-and restart the server.
-
 See the example [config file](./cync_mesh_example.yaml)
 
 ### Export config from Cync cloud API
