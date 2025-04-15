@@ -35,7 +35,7 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 >[!IMPORTANT]
 > You must create a virtualenv and download the cync-lan.py script in order to export 
 > your Cync devices from the Cync cloud API. Even if you only plan on using a docker set-up.
-> > This requires your email, password and the code that will be emailed to you during export.
+> This requires your email, password and the code that will be emailed to you during export.
 
 You will want to save the virtualenv setup for future use. If you add new devices to your 
 Cync account, you need to export the config. Please see [Install docs](./docs/install.md) for more information.
