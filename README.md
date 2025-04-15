@@ -3,14 +3,8 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/baudneo/cync-lan/container-package-publish.yml) 
 ![Docker Pulls](https://img.shields.io/docker/pulls/baudneo/cync-lan)
 
-
 >[!IMPORTANT]
 > [DNS redirection REQUIRED](./docs/DNS.md)
-
->[!WARNING]
-> Breaking Changes as of v0.1.0:
-> * All **automations, scenes, triggers, groups, dashboards**, etc. will need to be redone as the internal HASS names are changed (i.e: `light.cync_lan_kitchen_counter` will now be something like `light.cync_lan_<home id>_<device id>`).
-> * Switching from entities to devices.
 
 Async HTTP/MQTT LAN controller for Cync/C by GE devices. **Local** only control
 of **most** Cync devices via MQTT JSON payloads following the Home Assistant MQTT JSON schema. 
@@ -146,7 +140,7 @@ and I can walk you through getting good debug logs, or you can use
 cloud server in real-time yourself by running:
 
 ```bash
-# make sure to create the self signed certs first
+# make sure to create the self-signed certs first
 # Older firmware devices
 socat -d -d -lf /dev/stdout -x -v 2> dump.txt ssl-l:23779,reuseaddr,fork,cert=certs/server.pem,verify=0 openssl:34.73.130.191:23779,verify=0
 # Newer firmware devices (Notice the last IP change)
