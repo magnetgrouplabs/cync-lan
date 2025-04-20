@@ -46,8 +46,8 @@ Cync account, you need to export the config. Please see [Install docs](./docs/in
 - run: `docker compose pull && docker compose up -d --force-recreate`
 #### 'Upgrade in-place'
 If you want to update the container in-place, you can:
-- `cd` to cync-lan docker directory where `docker-compose.yaml` is located
-- `wget 'https://raw.githubusercontent.com/baudneo/cync-lan/refs/heads/python/src/cync-lan.py'`
+- `cd` to cync-lan docker directory where `docker-compose.yaml` is located 
+- `wget -O ./cync-lan.py 'https://raw.githubusercontent.com/baudneo/cync-lan/refs/heads/python/src/cync-lan.py'`
 - edit `docker-compose.yaml` and uncomment the bind mount line in volumes for ./cync-lan.py
     - ```
       volumes:
@@ -61,7 +61,7 @@ If you want to update the container in-place, you can:
 ## Re-routing / Overriding DNS
 >[!WARNING] 
 > After freshly redirecting DNS: Devices that are currently
-> talking to the Cync cloud will need to be power cycled before they make
+> talking to Cync cloud will need to be power cycled before they make
 > a DNS request and connect to the local `cync-lan` server.
 
 There are detailed instructions for OPNSense and Pi-hole. 
@@ -69,6 +69,13 @@ See [DNS docs](docs/DNS.md) for more information.
 
 ## Tips
 See [Tips](docs/tips.md) for more information on how to get the most out of this project.
+
+Also, let me set some expectations:
+1. HASS light groups will always have a delay on state changes between each other (set group of cync lights green, they don't all change to green at the same time) 
+At the moment, the script receives an MQTT command, sends commands to `x` devices 
+and receives a `success` response all within 200 ish ms (0.2 seconds). I don't know
+what happens on the device itself, but the TCP <-> BT bridge is not instant, when it really should be. Work continues on improving this.
+2. There are no provisions for the Cync app to work with this project, any data sent by the app is black-holed (for now, anyway).  
 
 ## Config file
 See the example [config file](./cync_mesh_example.yaml)
@@ -87,27 +94,27 @@ breakdown. Please see the
 > The `CYNC_MQTT_URL` variable is **deprecated** and will be removed in a future release.
 > For now, it will be parsed into `CYNC_MQTT_HOST`, `CYNC_MQTT_PORT`, `CYNC_MQTT_USER`, and `CYNC_MQTT_PASS`.
 
-| Variable                 | Description                                       | Default               |
-|--------------------------|---------------------------------------------------|-----------------------|
-| `CYNC_MQTT_HOST`         | Host of MQTT broker                               | `homeassistant.local` |
-| `CYNC_MQTT_PORT`         | Port of MQTT broker                               | `1883`                |
-| `CYNC_MQTT_USER`         | Username for MQTT broker                          |                       |
-| `CYNC_MQTT_PASS`         | Password for MQTT broker                          |                       |
-| `CYNC_MQTT_CONN_DELAY`   | Delay between MQTT re-connections (seconds)       | `10`                  |
-| `CYNC_DEBUG`             | Enable debug logging                              | `0`                   |
-| `CYNC_RAW_DEBUG`         | Enable raw binary message debug logging           | `0`                   |
-| `CYNC_CERT`              | Path to cert file                                 | `certs/server.pem`    |
-| `CYNC_KEY`               | Path to key file                                  | `certs/server.key`    |
-| `CYNC_PORT`              | Port to listen on (shouldn't need to change)      | `23779`               |
-| `CYNC_HOST`              | Interface to listen on                            | `0.0.0.0`             |
-| `CYNC_TOPIC`             | MQTT topic                                        | `cync_lan`            |
-| `CYNC_HASS_TOPIC`        | Home Assistant topic                              | `homeassistant`       |
-| `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will                | `status`              |
-| `CYNC_HASS_BIRTH_MSG`    | HASS birth message                                | `online`              |
-| `CYNC_HASS_WILL_MSG`     | HASS will message                                 | `offline`             |
-| `CYNC_CMD_BROADCASTS`    | Number of WiFi devices to send state commands to  | `2`                   |
-| `CYNC_MAX_TCP_CONN`      | Maximum Wifi devices allowed to connect at a time | `8`                   |
-| `CYNC_TCP_WHITELIST`     | Comma separated string of allowed IPs             | Allow ALL IPs         |
+| Variable                 | Description                                       | Default               | Type |
+|--------------------------|---------------------------------------------------|-----------------------|------|
+| `CYNC_MQTT_HOST`         | Host of MQTT broker                               | `homeassistant.local` | str  |
+| `CYNC_MQTT_PORT`         | Port of MQTT broker                               | `1883`                | int  |
+| `CYNC_MQTT_USER`         | Username for MQTT broker                          |                       | str  |
+| `CYNC_MQTT_PASS`         | Password for MQTT broker                          |                       | str  |
+| `CYNC_MQTT_CONN_DELAY`   | Delay between MQTT re-connections (seconds)       | `10`                  | int  |
+| `CYNC_DEBUG`             | Enable debug logging                              | `0`                   | int  |
+| `CYNC_RAW_DEBUG`         | Enable raw binary message debug logging           | `0`                   | int  |
+| `CYNC_CERT`              | Path to cert file                                 | `certs/server.pem`    | str  |
+| `CYNC_KEY`               | Path to key file                                  | `certs/server.key`    | str  |
+| `CYNC_PORT`              | Port to listen on (shouldn't need to change)      | `23779`               | int  |
+| `CYNC_HOST`              | Interface to listen on                            | `0.0.0.0`             | str  |
+| `CYNC_TOPIC`             | MQTT topic                                        | `cync_lan`            | str  |
+| `CYNC_HASS_TOPIC`        | Home Assistant topic                              | `homeassistant`       | str  |
+| `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will                | `status`              | str  |
+| `CYNC_HASS_BIRTH_MSG`    | HASS birth message                                | `online`              | str  |
+| `CYNC_HASS_WILL_MSG`     | HASS will message                                 | `offline`             | str  |
+| `CYNC_CMD_BROADCASTS`    | Number of WiFi devices to send state commands to  | `2`                   | int  |
+| `CYNC_MAX_TCP_CONN`      | Maximum Wifi devices allowed to connect at a time | `8`                   | int  |
+| `CYNC_TCP_WHITELIST`     | Comma separated string of allowed IPs             | Allow ALL IPs         | str  |
 
 
 ## Controlling devices
@@ -132,7 +139,7 @@ and I can walk you through getting good debug logs, or you can use
 cloud server in real-time yourself by running:
 
 ```bash
-# make sure to create the self-signed certs first
+# make sure to create the self-signed certs first (they will be located in ./certs/ dir)
 # Older firmware devices
 socat -d -d -lf /dev/stdout -x -v 2> dump.txt ssl-l:23779,reuseaddr,fork,cert=certs/server.pem,verify=0 openssl:34.73.130.191:23779,verify=0
 # Newer firmware devices (Notice the last IP change)
@@ -144,7 +151,7 @@ In `dump.txt` you will see the back-and-forth communication between the device a
 # Firewall
 Once the devices are local, they must be able to initiate a connection to 
 the `cync-lan` server. If you block them from the internet, don't forget to 
-allow them to connect to the `cync-lan` server.
+allow them to connect to the `cync-lan` server (VLANs?).
 
 ## OPNsense Example
 Please see the [example](./docs/troubleshooting.md#opnsense-firewall-example)
