@@ -13,6 +13,7 @@ RUN set -x \
     && pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir \
          'pyyaml==6.0.2' 'requests>=2.32.3' 'uvloop>=0.21.0' 'aiomqtt==2.3.0' \
+         'fastapi' 'uvicorn' \
       && DEBIAN_FRONTEND=noninteractive apt-get remove -yq git build-essential cmake \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
     && DEBIAN_FRONTEND=noninteractive apt-get clean \
