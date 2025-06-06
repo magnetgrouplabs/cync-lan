@@ -10,7 +10,7 @@ from typing import Optional, Union, List, Coroutine
 import  aiomqtt
 
 from .const import *
-from .utils import DeviceStatus
+from .structs import DeviceStatus
 from .devices import CyncDevice
 from .metadata.model_info import device_type_map
 

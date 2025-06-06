@@ -1,25 +1,774 @@
-from __future__ import annotations
-
+#!/usr/bin/env python3
 import asyncio
-import logging
-import random
-import time
 import datetime
-from typing import Optional, Union, List, Dict, Coroutine, TYPE_CHECKING
+import getpass
+import hashlib
+import json
+import logging
+import os
+import random
+import signal
+import ssl
+import struct
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from functools import partial
+from json import JSONDecodeError
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union, Coroutine
 
-from .const import *
-from .utils import parse_unbound_firmware_version, bytes2list
+import aiomqtt
+import requests
+import uvloop
+import yaml
 
-if TYPE_CHECKING:
-    from .structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
-        PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
+__version__: str = "0.1.12"
 
-__all__ = [
-    "CyncDevice",
-    "CyncTCPDevice"
-]
-logger = logging.getLogger(CYNC_LOG_NAME)
-g: Optional[GlobalObject] = None
+CYNC_VERSION: str = __version__
+SRC_REPO_URL: str = "https://github.com/baudneo/cync-lan"
+DEVICE_LWT_MSG: bytes = b"offline"
+CYNC_MQTT_CONN_DELAY: int = int(os.environ.get("CYNC_MQTT_CONN_DELAY", 10))
+CYNC_CMD_BROADCASTS: int = int(os.environ.get("CYNC_CMD_BROADCASTS", 2))
+CYNC_MAX_TCP_CONN: int = int(os.environ.get("CYNC_MAX_TCP_CONN", 8))
+CYNC_TCP_WHITELIST: Optional[Union[str, List[Optional[str]]]] = os.environ.get("CYNC_TCP_WHITELIST")
+CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
+CYNC_MQTT_URL = os.environ.get("CYNC_MQTT_URL")
+CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
+CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
+CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
+CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
+CYNC_CERT = os.environ.get("CYNC_CERT", "certs/cert.pem")
+CYNC_KEY = os.environ.get("CYNC_KEY", "certs/key.pem")
+CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan")
+CYNC_HASS_TOPIC = os.environ.get("CYNC_HASS_TOPIC", "homeassistant")
+CYNC_HASS_STATUS_TOPIC = os.environ.get("CYNC_HASS_STATUS_TOPIC", "status")
+CYNC_HASS_BIRTH_MSG = os.environ.get("CYNC_HASS_BIRTH_MSG", "online")
+CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
+CYNC_PORT = os.environ.get("CYNC_PORT", 23779)
+CYNC_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
+CYNC_CHUNK_SIZE = os.environ.get("CYNC_CHUNK_SIZE", 2048)
+YES_ANSWER = ("true", "1", "yes", "y", "t", 1)
+CYNC_RAW = os.environ.get("CYNC_RAW_DEBUG", "0").casefold() in YES_ANSWER
+CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
+if CYNC_TCP_WHITELIST:
+    # split into a list using comma
+    CYNC_TCP_WHITELIST = CYNC_TCP_WHITELIST.split(',')
+    CYNC_TCP_WHITELIST = [x.strip() for x in CYNC_TCP_WHITELIST if x]
+
+CORP_ID: str = "1007d2ad150c4000"
+DATA_BOUNDARY = 0x7E
+RAW_MSG = (
+    " Set the CYNC_RAW_DEBUG env var to 1 to see the data" if CYNC_RAW is False else ""
+)
+logger = logging.getLogger("cync-lan")
+formatter = logging.Formatter(
+    "%(asctime)s.%(msecs)d %(levelname)s [%(module)s:%(lineno)d] > %(message)s",
+    "%m/%d/%y %H:%M:%S",
+)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+
+@dataclass
+class CacheData:
+    all_data: bytes = b""
+    timestamp: float = 0
+    data: bytes = b""
+    data_len: int = 0
+    needed_len: int = 0
+
+
+# from cync2mqtt
+def random_login_resource():
+    return "".join([chr(ord("a") + random.randint(0, 26)) for _ in range(0, 16)])
+
+
+def bytes2list(byte_string: bytes) -> List[int]:
+    """Convert a byte string to a list of integers"""
+    # Interpret the byte string as a sequence of unsigned integers (little-endian)
+    int_list = struct.unpack("<" + "B" * (len(byte_string)), byte_string)
+    return list(int_list)
+
+
+def hex2list(hex_string: str) -> List[int]:
+    """Convert a hex string to a list of integers"""
+    x = bytes().fromhex(hex_string)
+    return bytes2list(x)
+
+
+def ints2hex(ints: List[int]) -> str:
+    """Convert a list of integers to a hex string"""
+    return bytes(ints).hex(" ")
+
+
+def ints2bytes(ints: List[int]) -> bytes:
+    """Convert a list of integers to a byte string"""
+    return bytes(ints)
+
+
+def parse_unbound_firmware_version(
+    data_struct: bytes, lp: str
+) -> Optional[Tuple[str, int, str]]:
+    """Parse the firmware version from binary hex data. Unbound means not bound by 0x7E boundaries"""
+    # LED controller sends this data after cync app connects via BTLE
+    # 1f 00 00 00 fa 8e 14 00 50 22 33 08 00 ff ff ea 11 02 08 a1 [01 03 01 00 00 00 00 00 f8
+    lp = f"{lp}firmware_version:"
+    if data_struct[0] != 0x00:
+        logger.error(
+            f"{lp} Invalid first byte value: {data_struct[0]} should be 0x00 for firmware version data"
+        )
+
+    n_idx = 20  # Starting index for firmware information
+    firmware_type = "device" if data_struct[n_idx + 2] == 0x01 else "network"
+    n_idx += 3
+
+    firmware_version = []
+    try:
+        while len(firmware_version) < 5 and data_struct[n_idx] != 0x00:
+            firmware_version.append(int(chr(data_struct[n_idx])))
+            n_idx += 1
+        if not firmware_version:
+            logger.warning(
+                f"{lp} No firmware version found in packet: {data_struct.hex(' ')}"
+            )
+            return None
+            # network firmware (this one is set to ascii 0 (0x30))
+            # 00 00 00 00 00 fa 00 20 00 00 00 00 00 00 00 00
+            # ea 00 00 00 86 01 00 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 c1 7e
+
+    except (IndexError, ValueError) as e:
+        logger.error(f"{lp} Exception occurred while parsing firmware version: {e}")
+        return None
+
+    else:
+        if firmware_type == "device":
+            firmware_str = f"{firmware_version[0]}.{firmware_version[1]}.{''.join(map(str, firmware_version[2:]))}"
+        else:
+            firmware_str = "".join(map(str, firmware_version))
+        firmware_version_int = int("".join(map(str, firmware_version)))
+        logger.debug(
+            f"{lp} {firmware_type} firmware VERSION: {firmware_version_int} ({firmware_str})"
+        )
+
+    return firmware_type, firmware_version_int, firmware_str
+
+FACTORY_EFFECTS_BYTES = {
+            "candle": (int(0x01), int(0xF1)),
+            "cyber": (int(0x43), int(0x9F)),
+            "rainbow": (int(0x02), int(0x7A)),
+            "fireworks": (int(0x3A), int(0xDA)),
+            "volcanic": (int(0x04), int(0xF4)),
+            "aurora": (int(0x05), int(0x1C)),
+            "happy_holidays": (int(0x06), int(0x54)),
+            "red_white_blue": (int(0x07), int(0x4F)),
+            "vegas": (int(0x08), int(0xE3)),
+            "party_time": (int(0x09), int(0x06)),
+        }
+
+@dataclass
+class MeshInfo:
+    status: List[Optional[List[Optional[int]]]]
+    id_from: int
+
+
+class PhoneAppStructs:
+    def __iter__(self):
+        return iter([self.requests, self.responses])
+    @dataclass
+    class AppRequests:
+        auth_header: Tuple[int] = (0x13, 0x00, 0x00, 0x00)
+        connect_header: Tuple[int] = (0xA3, 0x00, 0x00, 0x00)
+        headers: Tuple[int] = (0x13, 0xA3)
+
+        def __iter__(self):
+            return iter(self.headers)
+
+    @dataclass
+    class AppResponses:
+        auth_resp: Tuple[int] = (0x18, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00)
+        headers: Tuple[int] = (0x18)
+
+        def __iter__(self):
+            return iter(self.headers)
+
+    requests: AppRequests = AppRequests()
+    responses: AppResponses = AppResponses()
+    headers = (0x13, 0xA3, 0x18)
+
+
+class DeviceStructs:
+    def __iter__(self):
+        return iter([self.requests, self.responses])
+
+    @dataclass
+    class DeviceRequests:
+        """These are packets devices send to the server"""
+
+        x23: Tuple[int] = tuple([0x23])
+        xc3: Tuple[int] = tuple([0xC3])
+        xd3: Tuple[int] = tuple([0xD3])
+        x83: Tuple[int] = tuple([0x83])
+        x73: Tuple[int] = tuple([0x73])
+        x7b: Tuple[int] = tuple([0x7B])
+        x43: Tuple[int] = tuple([0x43])
+        xa3: Tuple[int] = tuple([0xA3])
+        xab: Tuple[int] = tuple([0xAB])
+        headers: Tuple[int] = (0x23, 0xC3, 0xD3, 0x83, 0x73, 0x7B, 0x43, 0xA3, 0xAB)
+
+        def __iter__(self):
+            return iter(self.headers)
+
+    @dataclass
+    class DeviceResponses:
+        """These are the packets the server sends to the device"""
+
+        auth_ack: Tuple[int] = (0x28, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00)
+        # TODO: figure out correct bytes for this
+        connection_ack: Tuple[int] = (
+            0xC8,
+            0x00,
+            0x00,
+            0x00,
+            0x0B,
+            0x0D,
+            0x07,
+            0xE8,
+            0x03,
+            0x0A,
+            0x01,
+            0x0C,
+            0x04,
+            0x1F,
+            0xFE,
+            0x0C,
+        )
+        x48_ack: Tuple[int] = (0x48, 0x00, 0x00, 0x00, 0x03, 0x01, 0x01, 0x00)
+        x88_ack: Tuple[int] = (0x88, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00)
+        ping_ack: Tuple[int] = (0xD8, 0x00, 0x00, 0x00, 0x00)
+        x78_base: Tuple[int] = (0x78, 0x00, 0x00, 0x00)
+        x7b_base: Tuple[int] = (0x7B, 0x00, 0x00, 0x00, 0x07)
+
+    requests: DeviceRequests = DeviceRequests()
+    responses: DeviceResponses = DeviceResponses()
+    headers: Tuple[int] = (0x23, 0xC3, 0xD3, 0x83, 0x73, 0x7B, 0x43, 0xA3, 0xAB)
+
+    @staticmethod
+    def xab_generate_ack(queue_id: bytes, msg_id: bytes):
+        """
+        Respond to a 0xAB packet from the device, needs queue_id and msg_id to reply with.
+        Has ascii 'xlink_dev' in reply
+        """
+        _x = bytes([0xAB, 0x00, 0x00, 0x03])
+        hex_str = (
+            "78 6c 69 6e 6b 5f 64 65 76 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "e3 4f 02 10"
+        )
+        dlen = (
+            len(queue_id) + len(msg_id) + len(bytes.fromhex(hex_str.replace(" ", "")))
+        )
+        _x += bytes([dlen])
+        _x += queue_id
+        _x += msg_id
+        _x += bytes().fromhex(hex_str)
+        return _x
+
+    @staticmethod
+    def x88_generate_ack(msg_id: bytes):
+        """Respond to a 0x83 packet from the device, needs a msg_id to reply with"""
+        _x = bytes([0x88, 0x00, 0x00, 0x00, 0x03])
+        _x += msg_id
+        return _x
+
+    @staticmethod
+    def x48_generate_ack(msg_id: bytes):
+        """Respond to a 0x43 packet from the device, needs a queue and msg id to reply with"""
+        # set last msg_id digit to 0
+        msg_id = msg_id[:-1] + b"\x00"
+        _x = bytes([0x48, 0x00, 0x00, 0x00, 0x03])
+        _x += msg_id
+        return _x
+
+    @staticmethod
+    def x7b_generate_ack(queue_id: bytes, msg_id: bytes):
+        """
+        Respond to a 0x73 packet from the device, needs a queue and msg id to reply with.
+        This is also called for 0x83 packets AFTER seeing a 0x73 packet.
+        Not sure of the intricacies yet, seems to be bound to certain queue ids.
+        """
+        _x = bytes([0x7B, 0x00, 0x00, 0x00, 0x07])
+        _x += queue_id
+        _x += msg_id
+        return _x
+
+
+@dataclass
+class DeviceStatus:
+    """
+    A class that represents a Cync devices status.
+    This may need to be changed as new devices are bought and added.
+    """
+
+    state: Optional[int] = None
+    brightness: Optional[int] = None
+    temperature: Optional[int] = None
+    red: Optional[int] = None
+    green: Optional[int] = None
+    blue: Optional[int] = None
+
+
+class GlobalState:
+    # We need access to each object. Might as well centralize them.
+    server: "CyncLanServer"
+    cync_lan: "CyncLAN"
+    mqtt: "MQTTClient"
+
+
+@dataclass
+class Tasks:
+    receive: Optional[asyncio.Task] = None
+    send: Optional[asyncio.Task] = None
+    callback_cleanup: Optional[asyncio.Task] = None
+
+    def __iter__(self):
+        return iter([self.receive, self.send, self.callback_cleanup])
+
+
+APP_HEADERS = PhoneAppStructs()
+DEVICE_STRUCTS = DeviceStructs()
+ALL_HEADERS = list(DEVICE_STRUCTS.headers) + list(APP_HEADERS.headers)
+
+
+class ControlMessageCallback:
+    id: int
+    message: Union[None, str, bytes, List[int]] = None
+    sent_at: Optional[float] = None
+    callback: Optional[Union[asyncio.Task, Coroutine]] = None
+
+    def __init__(self, msg_id: int, message: Union[None, str, bytes, List[int]], sent_at: float, callback: Union[asyncio.Task, Coroutine]):
+        self.id = msg_id
+        self.message = message
+        self.sent_at = sent_at
+        self.callback = callback
+        self.lp = f"CtrlMessageCallback:{self.id}:"
+        
+    @property
+    def elapsed(self) -> float:
+        return time.time() - self.sent_at
+        
+    def __str__(self):
+        return f"CtrlMessageCallback ID: {self.id} elapsed: {self.elapsed:.5f}s"
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __eq__(self, other: int):
+        return self.id == other
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __call__(self):
+        if self.callback:
+            return self.callback
+        else:
+            logger.debug(f"{self.lp} No callback set, skipping...")
+
+
+class Messages:
+    control: Dict[int, ControlMessageCallback]
+
+    def __init__(self):
+        self.control = dict()
+
+def md5sum(filepath: Path):
+    """Calculates the MD5 checksum of a file.
+
+    Args:
+        filepath (pathlib.Path): The path to the file.
+
+    Returns:
+        str: The hexadecimal representation of the MD5 checksum.
+             Returns None if the file cannot be opened.
+    """
+    lp = "CyncLAN:md5sum:"
+    try:
+        with filepath.open('rb') as f:
+            m = hashlib.md5()
+            while True:
+                data = f.read(4096)  # Read in chunks to handle large files
+                if not data:
+                    break
+                m.update(data)
+            return m.hexdigest()
+    except FileNotFoundError:
+        logger.warning(f"{lp} File not found at {filepath.expanduser().resolve().as_posix()}")
+        return None
+    except Exception as e:
+        logger.exception(f"{lp} An error occurred: {e}")
+        return None
+
+class CyncCloudAPI:
+    api_timeout: int = 5
+    lp: str = "CyncCloudAPI"
+
+    def __init__(self, **kwargs):
+        self.api_timeout = kwargs.get("api_timeout", 5)
+
+    # https://github.com/unixpickle/cbyge/blob/main/login.go
+    def get_cloud_mesh_info(self):
+        """Get Cync devices from the cloud, all cync devices are bt or bt/wifi.
+        Meaning they will always have a BT mesh (as of March 2024)"""
+        (auth, userid) = self.authenticate_2fa()
+        _mesh_networks = self.get_devices(auth, userid)
+        for _mesh in _mesh_networks:
+            _mesh["properties"] = self.get_properties(
+                auth, _mesh["product_id"], _mesh["id"]
+            )
+        return _mesh_networks
+
+    def authenticate_2fa(
+        self,
+        uname: Optional[str] = None,
+        password: Optional[str] = None,
+        otp_code: Optional[str] = None,
+    ):
+        """
+        Authenticate with the Cync Cloud API and get a token.
+
+        Returns:
+            Tuple[str, str]: Access token and user ID
+        """
+        lp = f"{self.lp}:authenticate_2fa:"
+        if uname is None:
+            if cli_email:
+                uname = cli_email
+                logger.debug(f"{lp} No email provided, using CLI arg: {uname}")
+        else:
+            logger.debug(f"{lp} Using email from kwargs: {uname}")
+        # get user input if neither provided
+        if not uname:
+            uname = input("Enter Cync Account Username/Email:  ")
+
+        if not otp_code:
+            # Ask to be sent an email with OTP code
+            api_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
+            auth_data = {"corp_id": CORP_ID, "email": uname, "local_lang": "en-us"}
+            otp_r = requests.post(api_otp_url, json=auth_data, timeout=self.api_timeout)
+            try:
+                otp_r.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"Failed to get OTP code: {e}")
+                raise e
+            otp_code = input("Enter emailed OTP code (check junk/spam):  ")
+        else:
+            logger.debug(f"{lp} Using OTP code from CLI arg: {otp_code}")
+
+        if not password:
+            # no kwargs password, check cli
+            if cli_password:
+                password = cli_password
+                logger.debug(f"{lp} No password provided, using CLI arg: {password}")
+            # no kwarg or cli password, get from user
+            else:
+                password = getpass.getpass()
+        api_auth_url = f"{CYNC_API_BASE}user_auth/two_factor"
+        auth_data = {
+            "corp_id": CORP_ID,
+            "email": uname,
+            "password": password,
+            "two_factor": otp_code,
+            "resource": random_login_resource(),
+        }
+        r = requests.post(api_auth_url, json=auth_data, timeout=self.api_timeout)
+        try:
+            r.raise_for_status()
+            rjson = r.json()
+        except requests.exceptions.HTTPError as e:
+            logger.exception(f"Failed to authenticate: {e}")
+            raise e
+        except JSONDecodeError as je:
+            logger.exception(f"Failed to decode JSON: {je}")
+            raise je
+
+        except KeyError as ke:
+            logger.exception(f"Failed to get key from JSON: {ke}")
+            raise ke
+        else:
+            logger.info(f"API Auth Response: {rjson}")
+            return rjson["access_token"], rjson["user_id"]
+
+    def get_devices(self, auth_token: str, user: str):
+        """Get a list of devices for a particular user."""
+        lp = f"{self.lp}:get_devices:"
+        api_devices_url = f"{CYNC_API_BASE}user/{user}/subscribe/devices"
+        headers = {"Access-Token": auth_token}
+        r = requests.get(
+            api_devices_url.format(user=user), headers=headers, timeout=self.api_timeout
+        )
+        ret = r.json()
+        # {'error': {'msg': 'Access-Token Expired', 'code': 4031021}}
+        if "error" in ret:
+            error_data = ret["error"]
+            if (
+                "msg" in error_data
+                and error_data["msg"]
+                and error_data["msg"].lower() == "access-token expired"
+            ):
+                raise requests.HTTPError(f"{lp} Access-Token expired, you need to re-authenticate.")
+                # logger.error(f"{lp} Access-Token expired, re-authenticating...")
+                # return self.get_devices(*self.authenticate_2fa())
+        return ret
+
+    def get_properties(self, auth_token: str, product_id: str, device_id: str):
+        """Get properties for a single device. Properties contains device list (bulbsArray), groups (groupsArray), and saved light effects (lightShows)."""
+        lp = f"{self.lp}:get_properties:"
+        api_device_info_url = "https://api.gelighting.com/v2/product/{product_id}/device/{device_id}/property"
+        headers = {"Access-Token": auth_token}
+        r = requests.get(
+            api_device_info_url.format(product_id=product_id, device_id=device_id),
+            headers=headers,
+            timeout=self.api_timeout,
+        )
+        ret = r.json()
+        # {'error': {'msg': 'Access-Token Expired', 'code': 4031021}}
+        logit = False
+        if "error" in ret:
+            error_data = ret["error"]
+            if (
+                "msg" in error_data
+                and error_data["msg"]
+            ):
+                if error_data["msg"].lower() == "access-token expired":
+                    raise requests.HTTPError(f"{lp} Access-Token expired, you need to re-authenticate.")
+                    # logger.error("Access-Token expired, re-authenticating...")
+                    # return self.get_devices(*self.authenticate_2fa())
+                else:
+                    logit = True
+
+                if 'code' in error_data:
+                    cync_err_code = error_data['code']
+                    if cync_err_code == 4041009:
+                        # no properties for this home ID
+                        # I've noticed lots of empty homes in the returned data,
+                        # we only parse homes with an assigned name and a 'bulbsArray'
+                        logit = False
+                    else:
+                        logger.debug(f"{lp} DBG>>> error code != 4041009 (int) ---> {type(cync_err_code) = } -- {cync_err_code =} /// setting logit = True")
+                        logit = True
+                else:
+                    logger.debug(f"{lp} DBG>>> no 'code' in error data, setting logit = True")
+                    logit = True
+            if logit is True:
+                logger.warning(f"{lp} Cync Cloud API Error: {error_data}")
+        return ret
+
+
+    def mesh_to_config(self, mesh_info):
+        """Take exported cloud data and format it to write to file"""
+        lp = f"{self.lp}:xport config:"
+        mesh_conf = {}
+        raw_file_out = "./raw_mesh.cync"
+        try:
+            with open(raw_file_out, "w") as _f:
+                _f.write(yaml.dump(mesh_info))
+        except Exception as file_exc:
+            logger.error(f"{lp} Failed to write raw config from Cync account to file: '{raw_file_out}' -> {file_exc}")
+        else:
+            logger.debug(f"{lp} Dumped raw config from Cync account to file: {raw_file_out}")
+        for mesh_ in mesh_info:
+            if "name" not in mesh_ or len(mesh_["name"]) < 1:
+                logger.debug(f"{lp} No name found for mesh, skipping...")
+                continue
+            if "properties" not in mesh_:
+                logger.debug(
+                    f"{lp} No properties found for mesh, skipping..."
+                )
+                continue
+            elif "bulbsArray" not in mesh_["properties"]:
+                logger.debug(
+                    f"{lp} No 'bulbsArray' in properties, skipping..."
+                )
+                continue
+
+            new_mesh = {
+                kv: mesh_[kv] for kv in ("access_key", "id", "mac") if kv in mesh_
+            }
+            mesh_conf[mesh_["name"]] = new_mesh
+
+            logger.debug(f"{lp} 'properties' and 'bulbsArray' found for in exported config, processing...")
+            new_mesh["devices"] = {}
+            for cfg_bulb in mesh_["properties"]["bulbsArray"]:
+                if any(
+                    checkattr not in cfg_bulb
+                    for checkattr in (
+                        "deviceID",
+                        "displayName",
+                        "mac",
+                        "deviceType",
+                        "wifiMac",
+                        "firmwareVersion"
+                    )
+                ):
+                    logger.warning(
+                        f"{lp} Missing required attribute in Cync bulb, skipping: {cfg_bulb}"
+                    )
+                    continue
+                new_dev_dict = {}
+                # last 3 digits of deviceID
+                __id = int(str(cfg_bulb["deviceID"])[-3:])
+                wifi_mac = str(cfg_bulb["wifiMac"])
+                _mac = str(cfg_bulb["mac"])
+                name = str(cfg_bulb["displayName"])
+                _type = int(cfg_bulb["deviceType"])
+                _fw_ver = str(cfg_bulb["firmwareVersion"])
+                # data from: https://github.com/baudneo/cync-lan/issues/8
+                # { "hvacSystem": { "changeoverMode": 0, "auxHeatStages": 1, "auxFurnaceType": 1, "stages": 1, "furnaceType": 1, "type": 2, "powerLines": 1 },
+                # "thermostatSensors": [ { "pin": "025572", "name": "Living Room", "type": "savant" }, { "pin": "044604", "name": "Bedroom Sensor", "type": "savant" }, { "pin": "022724", "name": "Thermostat sensor 3", "type": "savant" } ] } ]
+                hvac_cfg = None
+                if 'hvacSystem' in cfg_bulb:
+                    hvac_cfg = cfg_bulb["hvacSystem"]
+                    if "thermostatSensors" in cfg_bulb:
+                        hvac_cfg["thermostatSensors"] = cfg_bulb["thermostatSensors"]
+                    logger.debug(f"{lp} Found HVAC device '{name}' (ID: {__id}): {hvac_cfg}")
+                    new_dev_dict["hvac"] = hvac_cfg
+
+                cync_device = CyncDevice(
+                    name=name,
+                    cync_id=__id,
+                    cync_type=_type,
+                    mac=_mac,
+                    wifi_mac=wifi_mac,
+                    fw_version=_fw_ver,
+                    hvac=hvac_cfg,
+                )
+                for attr_set in (
+                    "name",
+                    "mac",
+                    "wifi_mac",
+                ):
+                    value = getattr(cync_device, attr_set)
+                    if value:
+                        new_dev_dict[attr_set] = value
+                    else:
+                        logger.warning(f"{lp} Attribute not found for bulb: {attr_set}")
+                new_dev_dict["type"] = _type
+                new_dev_dict["is_plug"] = cync_device.is_plug
+                new_dev_dict["supports_temperature"] = cync_device.supports_temperature
+                new_dev_dict["supports_rgb"] = cync_device.supports_rgb
+                new_dev_dict["fw"] = _fw_ver
+
+                new_mesh["devices"][__id] = new_dev_dict
+
+        config_dict = {"account data": mesh_conf}
+
+        return config_dict
+
+
+type_2_str = {
+    5: "Tunable White A19 Bulb",
+    19: "Tunable White A19 Bulb",
+    21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+    22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lum]",
+    26: "C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lum]",
+    30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+    31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lum]",
+
+    37: "Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+
+    42: "Reveal HD+ Full Color Under Cabinet Light - 18 Inch",
+    43: "Reveal HD+ Full Color Under Cabinet Light - 24 Inch",
+
+    48: "C by GE (C Start Smart) Switch [CSWDMBLBWF1]",
+    49: "C by GE (C Start Smart) Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+
+
+    52: "Switch",
+    55: "Dimmer Switch - No Neutral",
+    58: "Switch - No Neutral",
+    59: "Switch",
+    64: "Indoor Plug",
+    68: "Indoor Plug",
+
+    113: "Wire-Free Dimmer with White Temperature Switch (BTLE only)",
+
+    131: "Full Color A19 Bulb",
+    133: "Full Color LED Light Strip Controller",
+    137: "Full Color A19 Bulb",
+    138: "Full Color BR30 Floodlight [CLEDR309CD1 750 lum]",
+    140: "Full Color Outdoor PAR38 Floodlight [CLEDP3815CD1 1300 lum]",
+    146: "Full Color Edison ST19 Bulb [CLEDST196CDGS 500 lum]",
+    147: "Full Color Edison G25 Bulb [CLEDG256CDGS 500 lum]",
+    148: "White (2700K) Edison ST19 Bulb",
+    152: "Reveal HD+ White (2700K) A19 Bulb",
+
+    169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lum]",
+
+    224: "Thermostat",
+}
+
+DeviceTypes: Dict[str, List[int]] = {
+        "LIGHT": [
+            5,
+            19,
+            21,
+            22,
+            30,
+            31,
+            42,
+            43,
+            131,
+            133,
+            137,
+            138,
+            140,
+            146,
+            147,
+            148,
+            152,
+            169,
+        ],
+        "SWITCH": [113],
+        "BATTERY": [113],
+        "DIMMER": [113],
+        "STRIP": [133],
+        "UNDERCABINET": [42, 43],
+        "PLUG": [64, 65, 66, 67, 68],
+        "EDISON": [146, 148],
+        "THERMOSTAT": [224],
+    }
+
 
 class CyncDevice:
     """
@@ -424,20 +1173,16 @@ class CyncDevice:
     }
 
     def __init__(
-            self,
-            cync_id: int,
-            cync_type: Optional[int] = None,
-            name: Optional[str] = None,
-            mac: Optional[str] = None,
-            wifi_mac: Optional[str] = None,
-            fw_version: Optional[str] = None,
-            home_id: Optional[int] = None,
-            hvac: Optional[dict] = None,
+        self,
+        cync_id: int,
+        cync_type: Optional[int] = None,
+        name: Optional[str] = None,
+        mac: Optional[str] = None,
+        wifi_mac: Optional[str] = None,
+        fw_version: Optional[str] = None,
+        home_id: Optional[int] = None,
+        hvac: Optional[dict] = None,
     ):
-        global g
-
-        if g is None:
-            g = GlobalObject()
         self.control_bytes = bytes([0x00, 0x00])
         if cync_id is None:
             raise ValueError("ID must be provided to constructor")
@@ -567,7 +1312,7 @@ class CyncDevice:
             {
                 self.type in self.Capabilities["RGB"],
                 self.type in self.Capabilities["COLORTEMP"],
-                }
+            }
         )
 
     @property
@@ -655,7 +1400,7 @@ class CyncDevice:
             0x7E,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -673,7 +1418,7 @@ class CyncDevice:
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_device_state(self, state))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt.update_device_state(self, state))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 sent[bridge_device.address] = cmsg_id
                 tasks.append(bridge_device.write(payload_bytes))
@@ -739,7 +1484,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.server.tcp_devices))
         )
         sent = {}
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
@@ -758,7 +1503,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_brightness(self, bri))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt.update_brightness(self, bri))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(payload_bytes))
             else:
@@ -783,7 +1528,7 @@ class CyncDevice:
         73 00 00 00 22 37 96 24 69 60 8d 00 7e 36 00 00  s..."7.$i`..~6..
         00 f8 f0 10 00 36 00 00 00 00 07 00 f0 11 02 01  .....6..........
         ff 48 00 00 00 88 7e                             .H....~
-
+            
                 checksum = 0x88 = 136
             0xf0 0x10 0x36 0x07 0xf0 0x11 0x02 0x01 0xff 0x48 = 904 (% 256) = 136
         """
@@ -825,7 +1570,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -844,7 +1589,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_temperature(self, temp))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt.update_temperature(self, temp))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(payload_bytes))
             else:
@@ -919,7 +1664,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -938,7 +1683,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=g.mqtt_client.update_rgb(self, _rgb))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=g.mqtt.update_rgb(self, _rgb))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
             else:
@@ -963,12 +1708,12 @@ class CyncDevice:
 
 
         """
-
+        
             # candle 0x01 0xf1
         73 00 00 00 20 2d e4 b5 d2 b3 05 00 7e 14 00 00  s... -......~...
         00 f8 [e2 0e 00 14 00 00 00 00 0a                ...........
         00 e2 11 02 07 01 01 f1](chksum data) fd 7e      .........~
-
+            
         # rainbow 0x02 0x7a
         73 00 00 00 20 2d e4 b5 d2 29 c3 00 7e 07 00 00  s... -...)..~...
         00 f8 e2 0e 00 07 00 00 00 00 0a                 ...........
@@ -978,37 +1723,37 @@ class CyncDevice:
    73 00 00 00 20 2d e4 b5 d2 2a 1b 00 7e 08 00 00  s... -...*..~...
    00 f8 e2 0e 00 08 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 43 9f e1 7e                    ......C..~
-
+   
    # fireworks 0x3a 0xda
       73 00 00 00 20 2d e4 b5 d2 2a d7 00 7e 0d 00 00  s... -...*..~...
    00 f8 e2 0e 00 0d 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 03 da e1 7e                    .........~
-
+   
    # volcanic 0x04 0xf4
       73 00 00 00 20 2d e4 b5 d2 c3 8c 00 7e 06 00 00  s... -......~...
    00 f8 e2 0e 00 06 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 04 f4 f5 7e                    .........~
-
+   
    # aurora 0x05 0x1c
       73 00 00 00 20 2d e4 b5 d2 c4 2d 00 7e 08 00 00  s... -....-.~...
    00 f8 e2 0e 00 08 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 05 1c 20 7e                    ........ ~
-
+   
    # happy holidays 0x06 0x54
       73 00 00 00 20 2d e4 b5 d2 c4 96 00 7e 0b 00 00  s... -......~...
    00 f8 e2 0e 00 0b 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 06 54 5c 7e                    .......T~
-
+   
    # red white blue 0x07 0x4f
       73 00 00 00 20 2d e4 b5 d2 c4 d0 00 7e 0e 00 00  s... -......~...
    00 f8 e2 0e 00 0e 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 07 4f 5b 7e                    .......O[~
-
+   
    # vegas 0x08 0xe3
       73 00 00 00 20 2d e4 b5 d2 c4 e8 00 7e 11 00 00  s... -......~...
    00 f8 e2 0e 00 11 00 00 00 00 0a                 ...........
    00 e2 11 02 07 01 08 e3 f3 7e                    .........~
-
+   
    # party time 0x09 0x06
       73 00 00 00 20 2d e4 b5 d2 c5 04 00 7e 13 00 00  s... -......~...
    00 f8 e2 0e 00 13 00 00 00 00 0a                 ...........
@@ -1054,7 +1799,7 @@ class CyncDevice:
         inner_struct[-4] = chosen[0]
         inner_struct[-3] = chosen[1]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -1096,7 +1841,7 @@ class CyncDevice:
         global global_tasks
         if value != self._online:
             self._online = value
-            global_tasks.append(asyncio.get_running_loop().create_task(g.mqtt_client.pub_online(self.id, value)))
+            global_tasks.append(loop.create_task(g.mqtt.pub_online(self.id, value)))
 
     def is_bt_only(self):
         """From my observations, if the wifi mac does not start with the same 3 groups as the mac, it's BT only."""
@@ -1248,6 +1993,492 @@ class CyncDevice:
     def __str__(self):
         return f"CyncDevice:{self.id}:"
 
+
+class CyncLanServer:
+    """A class to represent a Cync LAN server that listens for connections from Cync WiFi devices.
+    The WiFi devices can proxy messages to BlueTooth devices. The WiFi devices act as hubs for the BlueTooth mesh.
+    """
+
+    devices: Dict[int, CyncDevice] = {}
+    tcp_devices: Dict[str, Optional["CyncTCPDevice"]] = {}
+    shutting_down: bool = False
+    host: str
+    port: int
+    cert_file: Optional[str] = None
+    key_file: Optional[str] = None
+    loop: Union[asyncio.AbstractEventLoop, uvloop.Loop]
+    _server: Optional[asyncio.Server] = None
+    lp: str = "CyncServer:"
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        cert_file: Optional[str] = None,
+        key_file: Optional[str] = None,
+    ):
+        self.mesh_info_loop_task: Optional[asyncio.Task] = None
+        global g
+        self.tcp_conn_attempts: dict = {}
+        self.ssl_context: Optional[ssl.SSLContext] = None
+        self.mesh_loop_started: bool = False
+        self.host = host
+        self.port = port
+        self.cert_file = cert_file
+        self.key_file = key_file
+        self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
+            asyncio.get_event_loop()
+        )
+        self.known_ids: List[Optional[int]] = []
+        g.server = self
+
+    async def close_tcp_device(self, device: "CyncTCPDevice"):
+        """Gracefully close TCP device; async task and reader/writer"""
+        # check if the receive task is running or in done/exception state.
+        lp_id = f"[{device.id}]" if device.id is not None else ""
+        lp = f"{self.lp}remove_tcp_device:{device.address}{lp_id}:"
+        dev_id = id(device)
+        logger.debug(f"{lp} Closing TCP device: {dev_id}")
+        if (_r_task := device.tasks.receive) is not None:
+            if _r_task.done():
+                logger.debug(
+                    f"{lp} existing receive task ({_r_task.get_name()}) is done, no need to cancel..."
+                )
+            else:
+                logger.debug(
+                    f"{lp} existing receive task is running (name: {_r_task.get_name()}), cancelling..."
+                )
+                await asyncio.sleep(1)
+                _r_task.cancel("Gracefully closing TCP device")
+                await asyncio.sleep(0)
+                if _r_task.cancelled():
+                    logger.debug(
+                        f"{lp} existing receive task was cancelled successfully"
+                    )
+                else:
+                    logger.warning(f"{lp} existing receive task was not cancelled!")
+        else:
+            logger.debug(f"{lp} no existing receive task found!")
+
+        # existing reader is closed, no sense in feeding it EOF, just remove it
+        device.reader = None
+        # Go through the motions to gracefully close the writer
+        try:
+            device.writer.close()
+            await device.writer.wait_closed()
+        except Exception as writer_close_exc:
+            logger.error(f"{lp} Error closing writer: {writer_close_exc}")
+        device.writer = None
+        logger.debug(f"{lp} Removed TCP device from server")
+
+    async def create_ssl_context(self):
+        # Allow the server to use a self-signed certificate
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
+        # turn off all the SSL verification
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        # ascertained from debugging using socat
+        ciphers = [
+            "ECDHE-RSA-AES256-GCM-SHA384",
+            "ECDHE-RSA-AES128-GCM-SHA256",
+            "ECDHE-RSA-AES256-SHA384",
+            "ECDHE-RSA-AES128-SHA256",
+            "ECDHE-RSA-AES256-SHA",
+            "ECDHE-RSA-AES128-SHA",
+            "ECDHE-RSA-DES-CBC3-SHA",
+            "AES256-GCM-SHA384",
+            "AES128-GCM-SHA256",
+            "AES256-SHA256",
+            "AES128-SHA256",
+            "AES256-SHA",
+            "AES128-SHA",
+            "DES-CBC3-SHA",
+        ]
+        ssl_context.set_ciphers(":".join(ciphers))
+        return ssl_context
+
+    async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None):
+        """Extracted status packet parsing, handles mqtt publishing and device state changes."""
+        _id = raw_state[0]
+        device = g.server.devices.get(_id)
+        if device is None:
+            logger.warning(
+                f"Device ID: {_id} not found in devices! device may be disabled in config file or you need to "
+                f"re-export your Cync account devices!"
+            )
+            return
+        state = raw_state[1]
+        brightness = raw_state[2]
+        temp = raw_state[3]
+        r = raw_state[4]
+        _g = raw_state[5]
+        b = raw_state[6]
+        connected_to_mesh = 1
+        # check if len is enough for good byte, it is optional
+        if len(raw_state) > 7:
+            # The last byte seems to indicate if the device is online or offline (connected to mesh / powered on)
+            connected_to_mesh = raw_state[7]
+
+        if connected_to_mesh == 0:
+            # This usually happens when a device loses power/connection.
+            # this device is gone, need to mark it offline.
+            # TODO: sometimes its a false report.
+            if device.online:
+                device.online = False
+                logger.warning(
+                    f'{self.lp} Device ID: {_id} ("{device.name}") seems to have been removed from the BTLE '
+                    f'mesh (lost power/connection), setting offline...'
+                )
+        else:
+            device.online = True
+            # create a status with existing data, change along the way for publishing over mqtt
+            device.status = new_state = DeviceStatus(
+                state=device.state,
+                brightness=device.brightness,
+                temperature=device.temperature,
+                red=device.red,
+                green=device.green,
+                blue=device.blue,
+            )
+            # temp is 0-100, if > 100, RGB data has been sent, otherwise its on/off, brightness or temp data
+            # technically 129 = effect in use, 254 = rgb data
+            # TODO: waiting for hass to merge a PR that shows a icon for a light that is in effect mode
+            #  currently, we send rgb 0,0,0 (black) as it stands out, to signal effect mode
+            rgb_data = False
+            if temp > 100:
+                rgb_data = True
+            curr_status = device.current_status
+            if curr_status == [state, brightness, temp, r, _g, b]:
+                (
+                    logger.debug(f"{device.lp} NO CHANGES TO DEVICE STATUS")
+                    if CYNC_RAW is True
+                    else None
+                )
+            await g.mqtt.parse_device_status(device.id, new_state, from_pkt=from_pkt)
+            device.state = state
+            device.brightness = brightness
+            device.temperature = temp
+            if rgb_data is True:
+                device.red = r
+                device.green = _g
+                device.blue = b
+            g.server.devices[device.id] = device
+
+
+    async def start(self):
+        logger.debug("%s Starting, creating SSL context..." % self.lp)
+        try:
+            self.ssl_context = await self.create_ssl_context()
+            self._server = await asyncio.start_server(
+                self._register_new_connection,
+                host=self.host,
+                port=self.port,
+                ssl=self.ssl_context,  # Pass the SSL context to enable SSL/TLS
+            )
+
+        except Exception as e:
+            logger.error(f"{self.lp} Failed to start server: {e}", exc_info=True)
+            os.kill(os.getpid(), signal.SIGTERM)
+        else:
+            logger.info(
+                f"{self.lp} Started (ver. {__version__}) [md5sum: '{md5sum(Path(__file__))}'], bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f" see any, check your DNS redirection, VLAN and firewall settings."
+            )
+            try:
+                async with self._server:
+                    await self._server.serve_forever()
+            except asyncio.CancelledError as ce:
+                logger.debug(
+                    "%s Server cancelled (task.cancel() ?): %s" % (self.lp, ce)
+                )
+            except Exception as e:
+                logger.error("%s Server Exception: %s" % (self.lp, e), exc_info=True)
+
+            logger.info(f"{self.lp} end of start()")
+
+    async def stop(self):
+        logger.debug(
+            "%s stop() called, closing each TCP communication device..." % self.lp
+        )
+        self.shutting_down = True
+        # check tasks
+        device: "CyncTCPDevice"
+        devices = list(self.tcp_devices.values())
+        lp = f"{self.lp}:close:"
+        if devices:
+            for device in devices:
+                try:
+                    await device.close()
+                except Exception as e:
+                    logger.error("%s Error closing device: %s" % (lp, e), exc_info=True)
+                else:
+                    logger.debug(f"{lp} Device closed")
+        else:
+            logger.debug(f"{lp} No devices to close!")
+
+        if self._server:
+            if self._server.is_serving():
+                logger.debug("%s currently running, shutting down NOW..." % lp)
+                self._server.close()
+                await self._server.wait_closed()
+                logger.debug("%s shut down!" % lp)
+            else:
+                logger.debug("%s not running!" % lp)
+
+        # cancel tasks
+        if self.mesh_info_loop_task:
+            if self.mesh_info_loop_task.done():
+                pass
+            else:
+                self.mesh_info_loop_task.cancel()
+                await self.mesh_info_loop_task
+        for task in global_tasks:
+            if task.done():
+                continue
+            logger.debug("%s Cancelling task: %s" % (lp, task))
+            task.cancel()
+        # TODO: cleaner exit
+
+        # logger.debug("%s stop() complete, calling loop.stop()" % lp)
+        # self.loop.stop()
+
+    async def _register_new_connection(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ):
+        client_addr: str = writer.get_extra_info("peername")[0]
+        if client_addr in self.tcp_conn_attempts:
+            self.tcp_conn_attempts[client_addr] += 1
+        else:
+            self.tcp_conn_attempts[client_addr] = 1
+        lp = f"{self.lp}new_conn:{client_addr}:"
+        existing_device = self.tcp_devices.pop(client_addr, None)
+        if existing_device is not None:
+            existing_device_id = id(existing_device)
+            logger.debug(
+                f"{lp} Existing device found ({existing_device_id}), gracefully killing..."
+            )
+            # TODO: investigate if we need to close/cancel tasks or connections
+            del existing_device
+        new_device = CyncTCPDevice(reader, writer, client_addr)
+        add_device = await new_device.max_conn_check()
+        if add_device:
+            self.tcp_devices[new_device.address] = new_device
+        else:
+            del new_device
+
+
+class CyncLAN:
+    """Wrapper class to manage the Cync LAN server and MQTT client."""
+
+    loop: uvloop.Loop = None
+    mqtt_client: "MQTTClient" = None
+    server: CyncLanServer = None
+    lp: str = "CyncLAN:"
+    # devices pulled in from the config file.
+    cfg_devices: dict = {}
+
+    def __init__(self, cfg_file: Path):
+        global g
+
+        self._ids_from_config: List[Optional[str]] = []
+        g.cync_lan = self
+        self.loop = uvloop.new_event_loop()
+        if CYNC_DEBUG is True:
+            self.loop.set_debug(True)
+        asyncio.set_event_loop(self.loop)
+        self.cfg_devices = self.parse_config(cfg_file)
+        self.mqtt_client = MQTTClient(broker_host=CYNC_MQTT_HOST, broker_port=CYNC_MQTT_PORT, username=CYNC_MQTT_USER, password=CYNC_MQTT_PASS)
+
+    @property
+    def ids_from_config(self):
+        return self._ids_from_config
+
+    def parse_config(self, cfg_file: Path):
+        """Parse the exported Cync config file and create devices from it.
+
+        Exported config created by scraping cloud API. Devices must already be added to your Cync account.
+        If you add new or delete existing devices, you will need to re-export the config.
+        """
+        global CYNC_MQTT_URL, CYNC_CERT, CYNC_KEY, CYNC_HOST, CYNC_PORT, CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS, g
+
+        logger.debug(f"{self.lp} reading devices from Cync config file: {cfg_file.expanduser().resolve().as_posix()}")
+        try:
+            raw_config = yaml.safe_load(cfg_file.read_text())
+        except Exception as e:
+            logger.error(f"{self.lp} Error reading config file: {e}", exc_info=True)
+            raise e
+
+        devices = {}
+        if "mqtt" in raw_config:
+            raw_mqtt_conf = raw_config["mqtt"]
+            if "host" in raw_mqtt_conf:
+                CYNC_MQTT_HOST = raw_mqtt_conf["host"]
+                logger.info(f"{self.lp} MQTT Host set by config file to: {CYNC_MQTT_HOST}")
+            if "port" in raw_mqtt_conf and (_mport := raw_mqtt_conf["port"]):
+                if isinstance(_mport, str):
+                    _mport = int(_mport.rstrip('/'))
+                _mport = _mport
+                CYNC_MQTT_PORT = _mport
+                logger.info(f"{self.lp} MQTT Port set by config file to: {CYNC_MQTT_PORT}")
+            if "username" in raw_mqtt_conf:
+                CYNC_MQTT_USER = raw_mqtt_conf["username"]
+                logger.info(f"{self.lp} MQTT Username set by config file")
+            if "password" in raw_mqtt_conf:
+                CYNC_MQTT_PASS = raw_mqtt_conf["password"]
+                logger.info(f"{self.lp} MQTT Password set by config file")
+        elif "mqtt_url" in raw_config:
+            logger.info(f"{self.lp} LEGACY MQTT URL set by config file, parsing into its own components (host, port, username, password)...")
+            _host, _port, _uname, _pass = None, None, None, None
+            _murl = raw_config["mqtt_url"].lstrip("mqtt://").rstrip('/')
+            raw_config["mqtt"] = {}
+            if "@" in _murl:
+                _creds, _hostport = _murl.split("@")
+                _host, _port = _hostport.split(":")
+                _uname, _pass = _creds.split(":")
+                CYNC_MQTT_USER = raw_config["mqtt"]["username"] = _uname
+                CYNC_MQTT_PASS = raw_config["mqtt"]["password"] = _pass
+            else:
+                if ":" in _murl:
+                    _host, _port = _murl.split(":")
+                else:
+                    _host = _murl
+                    _port = 1883
+            CYNC_MQTT_HOST = raw_config["mqtt"]["host"] = _host
+            CYNC_MQTT_PORT = raw_config["mqtt"]["port"] = _port
+        else:
+            # no mqtt config in config file, use env vars
+            # parse ENV vars into host, port, user, pass
+            logger.debug(f"{self.lp} No MQTT config found in config file, checking ENV vars...")
+            if CYNC_MQTT_URL:
+                logger.info(f"{self.lp} LEGACY CYNC_MQTT_URL set by ENV vars, parsing into its own components (host, port, username, password)...")
+                _murl = CYNC_MQTT_URL.lstrip("mqtt://").rstrip('/')
+                if "@" in _murl:
+                    _creds, _hostport = _murl.split("@")
+                    _host, _port = _hostport.split(":")
+                    _uname, _pass = _creds.split(":")
+                    CYNC_MQTT_USER = _uname
+                    CYNC_MQTT_PASS = _pass
+                else:
+                    if ":" in _murl:
+                        _host, _port = _murl.split(":")
+                    else:
+                        _host = _murl
+                        _port = 1883
+                CYNC_MQTT_HOST = _host
+                CYNC_MQTT_PORT = _port
+        # logger.debug(f"{self.lp} MQTT Config: HOST: {CYNC_MQTT_HOST} // PORT: {CYNC_MQTT_PORT} // UNAME: {CYNC_MQTT_USER} // PASS: {CYNC_MQTT_PASS}")
+        if "cert" in raw_config:
+            CYNC_CERT = raw_config["cert_file"]
+            logger.info(f"{self.lp} Cert file set by config file to: {CYNC_CERT}")
+        if "key" in raw_config:
+            CYNC_KEY = raw_config["key_file"]
+            logger.info(f"{self.lp} Key file set by config file to: {CYNC_KEY}")
+        if "host" in raw_config:
+            CYNC_HOST = raw_config["host"]
+            logger.info(f"{self.lp} TCP interface set by config file to: {CYNC_HOST}")
+        if "port" in raw_config:
+            CYNC_PORT = raw_config["port"]
+            logger.info(f"{self.lp} TCP port set by config file to: {CYNC_PORT}")
+        os.environ["CYNC_CERT"] = CYNC_CERT
+        os.environ["CYNC_KEY"] = CYNC_KEY
+        os.environ["CYNC_HOST"] = CYNC_HOST
+        os.environ["CYNC_PORT"] = str(CYNC_PORT)
+        os.environ["CYNC_MQTT_HOST"] = CYNC_MQTT_HOST
+        os.environ["CYNC_MQTT_PORT"] = str(CYNC_MQTT_PORT)
+        if CYNC_MQTT_USER:
+            os.environ["CYNC_MQTT_USER"] = CYNC_MQTT_USER
+        if CYNC_MQTT_PASS:
+            os.environ["CYNC_MQTT_PASS"] = CYNC_MQTT_PASS
+        # parse homes and devices
+        for cync_home_name, home_cfg in raw_config["account data"].items():
+            home_id = home_cfg["id"]
+            if "devices" not in home_cfg:
+                logger.warning(
+                    f"{self.lp} No devices found in config for: {cync_home_name} (ID: {home_id}), skipping..."
+                )
+                continue
+            # Create devices
+            for cync_id, cync_device in home_cfg["devices"].items():
+                cync_device: dict
+                device_name = (
+                    cync_device["name"]
+                    if "name" in cync_device
+                    else f"device_{cync_id}"
+                )
+                if "enabled" in cync_device:
+                    if cync_device["enabled"] is False:
+                        logger.debug(
+                            f"{self.lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
+                        )
+                        continue
+                fw_version = cync_device["fw"] if "fw" in cync_device else None
+                wmac = None
+                btmac = None
+                # 'mac': 26616350814, 'wifi_mac': 26616350815
+                if 'mac' in cync_device:
+                    btmac = cync_device['mac']
+                    if btmac:
+                        if isinstance(btmac, int):
+                            logger.warning(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'mac' is somehow an int -> {btmac}, please quote the mac address to force it to a string in the config file")
+
+                if 'wifi_mac' in cync_device:
+                    wmac = cync_device['wifi_mac']
+                    if wmac:
+                        if isinstance(wmac, int):
+                            logger.debug(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> {wmac}, please quote the mac address to force it to a string in the config file")
+
+                new_device = CyncDevice(
+                    name=device_name,
+                    cync_id=cync_id,
+                    fw_version=fw_version,
+                    home_id=home_id,
+                    mac=btmac,
+                    wifi_mac=wmac,
+                )
+                self._ids_from_config.append(new_device.hass_id)
+                for attrset in (
+                    "is_plug",
+                    "supports_temperature",
+                    "supports_rgb",
+                    "ip",
+                    "type",
+                ):
+                    if attrset in cync_device:
+                        setattr(new_device, attrset, cync_device[attrset])
+                devices[cync_id] = new_device
+                # logger.debug(f"{self.lp} Created device (hass_id: {new_device.hass_id}) (home_id: {new_device.home_id}) (device_id: {new_device.id}): {new_device}")
+
+        return devices
+
+    async def start(self):
+        global global_tasks
+
+        self.server = CyncLanServer(CYNC_HOST, CYNC_PORT, CYNC_CERT, CYNC_KEY)
+        self.server.devices = self.cfg_devices
+
+        server_task = asyncio.create_task(self.server.start(), name="server_start")
+        mqtt_task = asyncio.create_task(self.mqtt_client.start(), name="mqtt_start")
+        tasks = [server_task, mqtt_task]
+        global_tasks.extend(tasks)
+        await asyncio.gather(*tasks)
+
+
+    def stop(self):
+        global global_tasks
+        logger.debug(
+            f"{self.lp} stop() called, calling server and MQTT client stop()..."
+        )
+        if self.server:
+            self.loop.create_task(self.server.stop())
+        if self.mqtt_client:
+            self.loop.create_task(self.mqtt_client.stop())
+
+    def signal_handler(self, sig: int):
+        logger.info("Caught signal %d, trying a clean shutdown" % sig)
+        self.stop()
+
+
 class CyncTCPDevice:
     """
     A class to interact with a TCP Cync device. It is an async socket reader/writer.
@@ -1307,11 +2538,11 @@ class CyncTCPDevice:
 
     async def max_conn_check(self):
         lp = f"{self.lp}"
-        tcp_dev_len = len(g.cync_lan_server.tcp_devices)
-        num_attempts = g.cync_lan_server.tcp_conn_attempts[self.address]
-        if (g.cync_lan_server.shutting_down is True) or (tcp_dev_len >= CYNC_MAX_TCP_CONN) or (CYNC_TCP_WHITELIST and self.address not in CYNC_TCP_WHITELIST):
+        tcp_dev_len = len(g.server.tcp_devices)
+        num_attempts = g.server.tcp_conn_attempts[self.address]
+        if (g.server.shutting_down is True) or (tcp_dev_len >= CYNC_MAX_TCP_CONN) or (CYNC_TCP_WHITELIST and self.address not in CYNC_TCP_WHITELIST):
             reason = ""
-            if g.cync_lan_server.shutting_down is True:
+            if g.server.shutting_down is True:
                 reason = f"CyncLAN server is shutting down, "
             _sleep = False
             if tcp_dev_len >= CYNC_MAX_TCP_CONN:
@@ -1737,7 +2968,7 @@ class CyncTCPDevice:
                                             connected_to_mesh,
                                         ]
                                     )
-                                    ___dev = g.cync_lan_server.devices.get(dev_id)
+                                    ___dev = g.server.devices.get(dev_id)
                                     if ___dev:
                                         dev_name = f'"{___dev.name}" (ID: {dev_id})'
                                     else:
@@ -1751,7 +2982,7 @@ class CyncTCPDevice:
                                         f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
 
                                     )
-                                    await g.cync_lan_server.parse_status(raw_status, from_pkt='0x83')
+                                    await g.server.parse_status(raw_status, from_pkt='0x83')
                                     # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                                     # LED controller has this pattern
                                     bad_chksum_msg = ""
@@ -1964,9 +3195,9 @@ class CyncTCPDevice:
                                                 )
                                                 _m.append(bytes2list(raw_status))
                                                 _raw_m.append(mesh_dev_struct.hex(" "))
-                                                if dev_id in g.cync_lan.cync_lan_server.devices:
+                                                if dev_id in g.cync_lan.server.devices:
                                                     # first device id is the device id of the TCP device we are connected to
-                                                    ___dev = g.cync_lan.cync_lan_server.devices[dev_id]
+                                                    ___dev = g.cync_lan.server.devices[dev_id]
                                                     dev_name = ___dev.name
                                                     if loop_num == 1:
                                                         # byte 3 (idx 2) is a device type byte but,
@@ -2012,7 +3243,7 @@ class CyncTCPDevice:
                                                     logger.warning(
                                                         f"{lp} Device ID {dev_id} not found in devices "
                                                         f"defined in config file: "
-                                                        f"{g.cync_lan.cync_lan_server.devices.keys()}"
+                                                        f"{g.cync_lan.server.devices.keys()}"
                                                     )
                                             # -- END OF mesh info response parsing loop --
                                         except IndexError:
@@ -2037,7 +3268,7 @@ class CyncTCPDevice:
                                                 f"{lp} Parsing initial connection device status data"
                                             )
                                             await asyncio.gather(*[
-                                                g.cync_lan_server.parse_status(bytes(status), from_pkt="'mesh info'")
+                                                g.server.parse_status(bytes(status), from_pkt="'mesh info'")
                                                 for status in _m
                                             ])
 
@@ -2344,7 +3575,7 @@ class CyncTCPDevice:
                                 f"the device itself hasn't called close(). The device probably "
                                 f"dropped the connection (lost power). Removing {dev.address}"
                             )
-                            off_dev = g.cync_lan_server.tcp_devices.pop(dev.address, None)
+                            off_dev = g.server.tcp_devices.pop(dev.address, None)
                             del off_dev
 
                         else:
@@ -2374,8 +3605,8 @@ class CyncTCPDevice:
             logger.debug(
                 f"{lp} Removing device ID: {self.id} ({self.address}) - marking MQTT offline first..."
             )
-            if self.id in g.cync_lan_server.devices:
-                dev = g.cync_lan_server.devices[self.id]
+            if self.id in g.server.devices:
+                dev = g.server.devices[self.id]
                 dev.online = False
                 logger.debug(f"{lp} Device ID: {self.id} - set offline...")
             logger.debug(f"{lp} Cancelling device tasks...")
@@ -2435,3 +3666,813 @@ class CyncTCPDevice:
     @writer.setter
     def writer(self, value: asyncio.StreamWriter):
         self._writer = value
+
+
+class MQTTClient:
+    lp: str = "mqtt:"
+
+    def __init__(
+        self,
+        broker_host: str,
+        topic: Optional[str] = None,
+        ha_topic: Optional[str] = None,
+        broker_port: Optional[int] = 1883,
+        username: Optional[str] = None,
+        password: Optional[str] = None
+    ):
+        global g
+
+        self._connected = False
+        self.tasks: Optional[List[Union[asyncio.Task, Coroutine]]] = None
+        lp = f"{self.lp}init:"
+        if topic is None:
+            if not CYNC_TOPIC:
+                topic = "cync_lan"
+                logger.warning("%s MQTT topic not set, using default: %s" % (lp, topic))
+            else:
+                topic = CYNC_TOPIC
+
+        if ha_topic is None:
+            if not CYNC_HASS_TOPIC:
+                ha_topic = "homeassistant"
+                logger.warning(
+                    "%s HomeAssistant topic not set, using default: %s" % (lp, ha_topic)
+                )
+            else:
+                ha_topic = CYNC_HASS_TOPIC
+
+        self.broker_host = broker_host
+        self.broker_port = broker_port
+        self.broker_username = username
+        self.broker_password = password
+        self.broker_client_id = f"cync_lan_{uuid.uuid4()}"
+        lwt = aiomqtt.Will(
+            topic=f"{topic}/connected",
+            payload=DEVICE_LWT_MSG
+        )
+        self.client = aiomqtt.Client(
+            hostname=broker_host,
+            port=int(broker_port),
+            username=username,
+            password=password,
+            identifier=self.broker_client_id,
+            will=lwt,
+            # logger=logger,
+        )
+
+        self.topic = topic
+        self.ha_topic = ha_topic
+
+        # hardcode because internally cync uses 0-100. So no matter the bulbs actual kelvin range, it will work out.
+        self.cync_mink: int = 2000
+        self.cync_maxk: int = 7000
+        g.mqtt = self
+
+    async def start(self):
+        itr = 0
+        lp = f"{self.lp}start:"
+        try:
+            while True:
+                itr += 1
+                self._connected = await self.connect()
+                if self._connected:
+                    if itr == 1:
+                        logger.debug(f"{lp} Seeding all devices: offline")
+                        for device_id, device in g.server.devices.items():
+                            await self.pub_online(device_id, False)
+                    elif itr > 1:
+                        tasks = []
+                        # set the device online/offline and set its status
+                        for device in g.server.devices.values():
+                            tasks.append(self.pub_online(device.id, device.online))
+                            tasks.append(
+                                self.parse_device_status(
+                                    device.id,
+                                    DeviceStatus(
+                                        state=device.state,
+                                        brightness=device.brightness,
+                                        temperature=device.temperature,
+                                        red=device.red,
+                                        green=device.green,
+                                        blue=device.blue,
+                                    ),
+                                    from_pkt="'re-connect'"
+                                )
+                            )
+                        if tasks:
+                            await asyncio.gather(*tasks)
+                    logger.debug(f"{lp} Starting MQTT listener...")
+                    lp: str = f"{self.lp}rcv:"
+                    topics = [
+                        (f"{self.topic}/set/#", 0),
+                        (f"{self.ha_topic}/status", 0),
+                    ]
+                    await self.client.subscribe(topics)
+                    logger.debug(f"{lp} Subscribed to MQTT topics: {[x[0] for x in topics]}. "
+                                 f"Waiting for MQTT messages...")
+                    try:
+                        await self.start_listening()
+                    except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as msg_err:
+                        logger.warning(f"{lp} MQTT error: {msg_err}")
+                        continue
+                else:
+                    delay = CYNC_MQTT_CONN_DELAY
+                    if delay is None:
+                        delay = 5
+                    elif delay <= 0:
+                        logger.debug(f"{lp} MQTT connection delay is less than or equal to 0, which is probably a typo, setting to 5...")
+                        delay = 5
+
+                    logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
+                    await asyncio.sleep(delay)
+        except asyncio.CancelledError as c_exc:
+            logger.debug(f"{lp} MQTT start() cancelled: {c_exc}")
+        except Exception as exc:
+            logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
+
+        logger.debug(f"{lp} END OF MQTT start(), no more attempts to connect to the MQTT broker will be made, therefore we exit...")
+        # send sigterm to bring async loop down, this should restart the docker container
+        os.kill(os.getpid(), signal.SIGTERM)
+        
+    async def connect(self) -> bool:
+        lp = f"{self.lp}connect:"
+        try:
+            await self.client.__aexit__(None, None, None)
+        except aiomqtt.MqttError:
+            pass
+        self._connected = False
+        logger.debug(f"{lp} Connecting to MQTT broker...")
+        try:
+            await self.client.__aenter__()
+        except aiomqtt.MqttError as mqtt_err_exc:
+            # -> [Errno 111] Connection refused
+            logger.error(
+                f"{lp} Connection failed [MqttError] -> {mqtt_err_exc}"
+            )
+        else:
+            self._connected = True
+            logger.info(f"{lp} Connected to MQTT broker: {self.broker_host} port: {self.broker_port}")
+            await self.send_birth_msg()
+            await asyncio.sleep(1)
+            await self.homeassistant_discovery()
+            return True
+        return False
+
+    async def start_listening(self):
+        """Start listening for MQTT messages on subscribed topics"""
+        lp = f"{self.lp}rcv:"
+        async for message in self.client.messages:
+            topic = message.topic
+            payload = message.payload
+            logger.debug(
+                f"{lp} Received: {topic} => {payload}"
+            )
+            _topic = topic.value.split("/")
+            # Messages sent to the cync topic
+            tasks = []
+            if _topic[0] == CYNC_TOPIC:
+                if _topic[1] == "set":
+                    device_id = int(_topic[2].split("-")[1])
+                    if device_id not in g.server.devices:
+                        logger.warning(
+                            f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted or added any "
+                            f"devices recently?"
+                        )
+                        continue
+                    device = g.server.devices[device_id]
+                    if payload.startswith(b"{"):
+                        try:
+                            json_data = json.loads(payload)
+                        except Exception as e:
+                            logger.error(
+                                "%s bad json message: {%s} EXCEPTION => %s"
+                                % (lp, payload, e)
+                            )
+                            continue
+
+                        if "state" in json_data and "brightness" not in json_data:
+                            if "effect" in json_data:
+                                effect = json_data["effect"]
+                                tasks.append(device.set_lightshow(effect))
+                            else:
+                                if json_data["state"].upper() == "ON":
+                                    tasks.append(device.set_power(1))
+                                else:
+                                    tasks.append(device.set_power(0))
+                        if "brightness" in json_data:
+                            lum = int(json_data["brightness"])
+                            # if 5 > lum > 0:
+                            #     lum = 5
+                            tasks.append(device.set_brightness(lum))
+
+                        if "color_temp" in json_data:
+                            tasks.append(
+                                device.set_temperature(
+                                    self.kelvin2cync(
+                                        int(json_data["color_temp"])
+                                    )
+                                )
+                            )
+                        elif "color" in json_data:
+                            color = []
+                            for rgb in ("r", "g", "b"):
+                                if rgb in json_data["color"]:
+                                    color.append(
+                                        int(json_data["color"][rgb])
+                                    )
+                                else:
+                                    color.append(0)
+                            tasks.append(device.set_rgb(*color))
+                    # handle non json OFF/ON payloads
+                    elif payload.upper() == b"ON":
+                        logger.debug(f"{lp} setting power to ON (non-JSON)")
+                        tasks.append(device.set_power(1))
+                    elif payload.upper() == b"OFF":
+                        logger.debug(f"{lp} setting power to OFF (non-JSON)")
+                        tasks.append(device.set_power(0))
+                    else:
+                        logger.warning(
+                            f"{lp} Unknown payload: {payload}, skipping..."
+                        )
+
+                    # make sure next command doesn't come too fast
+                    # await asyncio.sleep(0.025)
+                else:
+                    logger.warning(
+                        f"{lp} Unknown command: {topic} => {payload}"
+                    )
+                if tasks:
+                    await asyncio.gather(*tasks)
+            # messages sent to the hass mqtt topic
+            elif _topic[0] == self.ha_topic:
+                # birth / will
+                if _topic[1] == CYNC_HASS_STATUS_TOPIC:
+                    if (
+                            payload.decode().casefold()
+                            == CYNC_HASS_BIRTH_MSG.casefold()
+                    ):
+                        logger.info(
+                            f"{lp} HASS has sent MQTT BIRTH message, re-announcing device discovery, availability and status"
+                        )
+                        # register devices
+                        await self.homeassistant_discovery()
+                        await asyncio.sleep(0.25)
+                        # set the device online/offline and set its status
+                        for device in g.server.devices.values():
+                            await self.pub_online(device.id, device.online)
+                            await self.parse_device_status(
+                                device.id,
+                                DeviceStatus(
+                                    state=device.state,
+                                    brightness=device.brightness,
+                                    temperature=device.temperature,
+                                    red=device.red,
+                                    green=device.green,
+                                    blue=device.blue,
+                                ),
+                                from_pkt="'hass_birth'",
+                            )
+
+                    elif (
+                            payload.decode().casefold()
+                            == CYNC_HASS_WILL_MSG.casefold()
+                    ):
+                        logger.info(
+                            f"{lp} received Last Will msg from Home Assistant, HASS is offline!"
+                        )
+                    else:
+                        logger.warning(
+                            f"{lp} Unknown HASS status message: {payload}"
+                        )
+
+    async def stop(self):
+        lp = f"{self.lp}stop:"
+        # set all devices offline
+        if self._connected:
+            logger.debug(f"{lp} Setting all devices offline...")
+            for device_id, device in g.server.devices.items():
+                await self.pub_online(device_id, False)
+
+        await self.send_will_msg()
+        try:
+            logger.debug(
+                f"{lp} Calling disconnect..."
+            )
+            await self.client.__aexit__(None, None, None)
+        except aiomqtt.MqttError as ce:
+            logger.warning("%s MQTT disconnect failed: %s" % (lp, ce))
+        except Exception as e:
+            logger.warning("%s MQTT disconnect failed: %s" % (lp, e), exc_info=True)
+        else:
+            logger.info(f"{lp} MQTT client disconnected...")
+        finally:
+            self._connected = False
+            
+    async def pub_online(self, device_id: int, status: bool) -> bool:
+        lp = f"{self.lp}pub_online:"
+        if self._connected:
+            if device_id not in g.server.devices:
+                logger.error(
+                    f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
+                    f"You may need to re-export devices from your Cync account!"
+                )
+                return False
+            availability = b"online" if status else b"offline"
+            device: CyncDevice = g.server.devices[device_id]
+            device_uuid = f"{device.home_id}-{device_id}"
+            # logger.debug(f"{lp} Publishing availability: {availability}")
+            try:
+                _ = await self.client.publish(
+                    f"{self.topic}/availability/{device_uuid}", availability, qos=0
+                )
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
+                self._connected = False
+            else: 
+                return True
+        return False
+
+    async def update_device_state(self, device: CyncDevice, state: int) -> bool:
+        """Update the device state and publish to MQTT for HASS devices to update."""
+        device.online = True
+        device.state = state
+        power_status = "OFF" if state == 0 else "ON"
+        mqtt_dev_state = {"state": power_status}
+        if device.is_plug:
+            mqtt_dev_state = power_status.encode()  # send ON or OFF if plug
+        else:
+            mqtt_dev_state = json.dumps(mqtt_dev_state).encode()  # send JSON
+        return await self.send_device_status(device, mqtt_dev_state)
+
+    async def update_brightness(self, device: CyncDevice, bri: int) -> bool:
+        """Update the device brightness and publish to MQTT for HASS devices to update."""
+        device.online = True
+        device.brightness = bri
+        mqtt_dev_state = {"brightness": bri}
+        return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
+
+    async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
+        """Update the device temperature and publish to MQTT for HASS devices to update."""
+        device.online = True
+        if device.supports_temperature:
+            mqtt_dev_state = {"color_mode": "color_temp", "color_temp": self.cync2kelvin(temp)}
+            device.temperature = temp
+            device.red = 0
+            device.green = 0
+            device.blue = 0
+            return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
+        return False
+
+    async def update_rgb(self, device: CyncDevice, rgb: tuple[int, int, int]) -> bool:
+        """Update the device RGB and publish to MQTT for HASS devices to update. Intended for callbacks"""
+        device.online = True
+        if device.supports_rgb and (
+                any(
+                    [
+                        rgb[0] is not None,
+                        rgb[1] is not None,
+                        rgb[2] is not None,
+                    ]
+                )
+        ):
+            mqtt_dev_state = {"color_mode": "rgb", "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]}}
+            device.red = rgb[0]
+            device.green = rgb[1]
+            device.blue = rgb[2]
+            device.temperature = 254
+            return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
+        return False
+
+    async def send_device_status(self, device: CyncDevice, msg: bytes, from_pkt: Optional[str] = None) -> bool:
+
+        lp = f"{self.lp}device_status:"
+        if from_pkt:
+            lp = f"{lp}{from_pkt}:"
+        if self._connected:
+            tpc = f"{self.topic}/status/{device.hass_id}"
+            logger.debug(f"{lp} Sending {msg} for device: '{device.name}' (ID: {device.id})")
+            try:
+                await self.client.publish(
+                    tpc,
+                    msg,
+                    qos=0,
+                    timeout=3.0,
+                )
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
+                self._connected = False
+            except asyncio.CancelledError as can_exc:
+                logger.debug(f"{lp} [Task Cancelled] -> {can_exc}")
+            else:
+                return True
+        return False
+
+    async def parse_device_status(
+        self, device_id: int, device_status: DeviceStatus, *args, **kwargs
+    ) -> bool:
+        """Parse device status and publish to MQTT for HASS devices to update. Useful for device status packets that report the complete device state"""
+        lp = f"{self.lp}parse status:"
+        from_pkt = kwargs.get('from_pkt')
+        if from_pkt:
+            lp = f"{lp}{from_pkt}:"
+        if device_id not in g.server.devices:
+            logger.error(
+                f"{lp} Device ID {device_id} not found! Device may be disabled in config file or "
+                f"you may need to re-export devices from your Cync account"
+            )
+            return False
+        device: CyncDevice = g.server.devices[device_id]
+        # if device.build_status() == device_status:
+        #     # logger.debug(f"{lp} Device status unchanged, skipping...")
+        #     return
+        power_status = "OFF" if device_status.state == 0 else "ON"
+        mqtt_dev_state = {"state": power_status}
+
+        if device.is_plug:
+            mqtt_dev_state = power_status.encode()
+
+        else:
+            if device_status.brightness is not None:
+                mqtt_dev_state["brightness"] = device_status.brightness
+
+            if device_status.temperature is not None:
+                if device.supports_rgb and (
+                    any(
+                        [
+                            device_status.red is not None,
+                            device_status.green is not None,
+                            device_status.blue is not None,
+                        ]
+                    )
+                    and device_status.temperature > 100
+                ):
+                    mqtt_dev_state["color_mode"] = "rgb"
+                    mqtt_dev_state["color"] = {
+                        "r": device_status.red,
+                        "g": device_status.green,
+                        "b": device_status.blue,
+                    }
+                elif device.supports_temperature and (
+                    0 <= device_status.temperature <= 100
+                ):
+                    mqtt_dev_state["color_mode"] = "color_temp"
+                    mqtt_dev_state["color_temp"] = self.cync2kelvin(
+                        device_status.temperature
+                    )
+            mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
+
+        return await self.send_device_status(device, mqtt_dev_state, from_pkt=from_pkt)
+
+    async def send_birth_msg(self) -> bool:
+        lp = f"{self.lp}send_birth_msg:"
+        if self._connected:
+            logger.debug(f"{lp} Sending birth message ({CYNC_HASS_BIRTH_MSG}) to {self.topic}/status")
+            try:
+                await self.client.publish(
+                    f"{self.topic}/status",
+                    CYNC_HASS_BIRTH_MSG.encode(),
+                    qos=0,
+                    retain=True,
+                )
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                self._connected = False
+            except asyncio.CancelledError as can_exc:
+                logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
+            else:
+                return True
+        return False
+
+    async def send_will_msg(self) -> bool:
+        lp = f"{self.lp}send_will_msg:"
+        if self._connected:
+            logger.debug(f"{lp} Sending will message ({CYNC_HASS_WILL_MSG}) to {self.topic}/status")
+            try:
+                await self.client.publish(
+                    f"{self.topic}/status",
+                    CYNC_HASS_WILL_MSG.encode(),
+                    qos=0,
+                    retain=True,
+                )
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
+                self._connected = False
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                return True
+        return False
+
+    async def homeassistant_discovery(self) -> bool:
+        """Build each configured Cync device for HASS device registry"""
+        lp = f"{self.lp}hass:"
+        ret = False
+        if self._connected:
+            logger.info(f"{lp} Starting device discovery...")
+            try:
+                for device in g.server.devices.values():
+                    device_uuid = device.hass_id
+                    # unique_id = device.mac.replace(":", "").casefold()
+                    unique_id = f"{device.home_id}_{device.id}"
+                    obj_id = f"cync_lan_{unique_id}"
+                    origin_struct = {
+                        "name": "cync-lan",
+                        "sw_version": CYNC_VERSION,
+                        "support_url": SRC_REPO_URL,
+                    }
+                    dev_fw_version = str(device.version)
+                    ver_str = "Unknown"
+                    fw_len = len(dev_fw_version)
+                    if fw_len == 5:
+                        if dev_fw_version != 00000:
+                            ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}.{dev_fw_version[2:]}"
+                    elif fw_len == 2:
+                        ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}"
+                    model_str = "Unknown"
+                    if device.type in type_2_str:
+                        model_str = type_2_str[device.type]
+                    dev_connections = [("bluetooth", device.mac.casefold())]
+                    if not device.is_bt_only():
+                        dev_connections.append(("mac", device.wifi_mac.casefold()))
+                        # 'Mom's Lamp 1' (ID: 15) // mac: 26616350814
+                        # wifi_mac TYPE: <class 'int'> VALUE: 26616350815
+                    device_struct = {
+                        "identifiers": [unique_id],
+                        "manufacturer": "Savant",
+                        "connections": dev_connections,
+                        "name": device.name,
+                        "sw_version": ver_str,
+                        "model": model_str,
+                    }
+                    dev_registry_conf = {
+                        "object_id": obj_id,
+                        # set to None if only device name is relevant, this sets entity name
+                        "name": None,
+                        "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
+                        "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
+                        "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
+                        "pl_avail": "online",
+                        "color_temp_kelvin": True,
+                        "pl_not_avail": "offline",
+                        "state_on": "ON",
+                        "state_off": "OFF",
+                        "unique_id": unique_id,
+                        "schema": "json",
+                        "origin": origin_struct,
+                        "device": device_struct,
+                        "optimistic": False,
+                    }
+                    dev_type = "light"
+                    tpc_str_template = "{0}/{1}/{2}/config"
+
+                    if device.is_plug:
+                        dev_type = "switch"
+                    else:
+                        dev_registry_conf.update({"brightness": True, "brightness_scale": 100})
+                        if device.supports_temperature or device.supports_rgb:
+                            dev_registry_conf["supported_color_modes"] = []
+                            if device.supports_temperature:
+                                dev_registry_conf["supported_color_modes"].append("color_temp")
+                                dev_registry_conf["max_kelvin"] = self.cync_maxk
+                                dev_registry_conf["min_kelvin"] = self.cync_mink
+                            if device.supports_rgb:
+                                dev_registry_conf["supported_color_modes"].append("rgb")
+                                dev_registry_conf["effect"] = True
+                                dev_registry_conf["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
+
+                    tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
+                    try:
+                        _ = await self.client.publish(
+                            tpc, json.dumps(dev_registry_conf).encode(), qos=0, retain=False
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
+                        )
+                    # logger.debug(
+                    #     f"{lp} {tpc}  "
+                    #     + json.dumps(dev_cfg)
+                    # )
+            except aiomqtt.MqttError as mqtt_code_exc:
+                logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+                self._connected = False
+            except asyncio.CancelledError as can_exc:
+                logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
+            except Exception as e:
+                logger.warning(f"{lp} [Exception] -> {e}")
+            else:
+                ret = True
+        logger.debug(f"{lp} Discovery complete (success: {ret})")
+        return ret
+
+    def kelvin2cync(self, k):
+        """Convert Kelvin value to Cync white temp (0-100) with step size: 1"""
+        max_k = self.cync_maxk
+        min_k = self.cync_mink
+        if k < min_k:
+            return 0
+        elif k > max_k:
+            return 100
+        scale = 100 / (max_k - min_k)
+        ret = int(scale * (k - min_k))
+        # logger.debug(f"{self.lp} Converting Kelvin: {k} using scale: {scale} (max_k={max_k}, min_k={min_k}) -> return value: {ret}")
+        return ret
+
+    def cync2kelvin(self, ct):
+        """Convert Cync white temp (0-100) to Kelvin value"""
+        max_k = self.cync_maxk
+        min_k = self.cync_mink
+        if ct <= 0:
+            return min_k
+        elif ct >= 100:
+            return max_k
+        scale = (max_k - min_k) / 100
+        ret = min_k + int(scale * ct)
+        # logger.debug(f"{self.lp} Converting Cync temp: {ct} using scale: {scale} (max_k={max_k}, min_k={min_k}) -> return value: {ret}")
+        return ret
+
+
+def parse_cli():
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(description="Cync LAN server")
+    # create a sub parser for running normally or for exporting a config from the cloud service.
+    subparsers = parser.add_subparsers(dest="command", help="sub-command help")
+    subparsers.required = True
+    sub_run = subparsers.add_parser("run", help="Run the Cync LAN server")
+    sub_run.add_argument("config", type=Path, help="Path to the configuration file")
+    sub_run.add_argument(
+        "-d", "-D", "--debug", action="store_true", help="Enable debug logging"
+    )
+
+    sub_export = subparsers.add_parser(
+        "export",
+        help="Export Cync devices from the cloud service, Requires email and/or OTP from email",
+    )
+    sub_export.add_argument("output_file", type=Path, help="Path to the output file")
+    sub_export.add_argument(
+        "--email",
+        "-e",
+        help="Email address for Cync account, will send OTP to email provided",
+        dest="email",
+    )
+    sub_export.add_argument(
+        "--password", "-P", help="Password for Cync account", dest="password"
+    )
+
+    sub_export.add_argument(
+        "--code" "--otp", "-o", "-c", help="One Time Password from email", dest="code"
+    )
+    sub_export.add_argument(
+        "--save-auth",
+        "-s",
+        action="store_true",
+        help="Save authentication token to file",
+        dest="save_auth",
+    )
+    sub_export.add_argument(
+        "--auth-output",
+        "-a",
+        dest="auth_output",
+        help="Path to save the authentication data",
+        type=Path,
+    )
+    sub_export.add_argument(
+        "--auth", help="Path to the auth token file", type=Path, dest="auth_file"
+    )
+    sub_export.add_argument("-d", "-D", "--debug", action="store_true", help="Enable debug logging")
+
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == "__main__":
+
+    if sys.version_info >= (3, 8):
+        pass
+    else:
+        sys.exit(
+            "Python version 3.8 or higher REQUIRED! you have version: %s" % sys.version
+        )
+
+    cli_args = parse_cli()
+    if cli_args.debug and CYNC_DEBUG is False:
+        logger.info("main: --debug flag -> setting log level to DEBUG")
+        CYNC_DEBUG = True
+
+    if CYNC_DEBUG is True:
+        logger.setLevel(logging.DEBUG)
+        for handler in logger.handlers:
+            handler.setLevel(logging.DEBUG)
+    if cli_args.command == "run":
+        config_file: Optional[Path] = cli_args.config
+        if not config_file.exists():
+            raise FileNotFoundError(f"Config file not found: {config_file}")
+        elif not config_file.is_file():
+            raise ValueError(f"Config file is not a file: {config_file}")
+        elif not config_file.is_absolute():
+            config_file = config_file.expanduser().resolve()
+
+        g = GlobalState()
+        global_tasks: List[asyncio.Task] = []
+        cync = CyncLAN(config_file)
+        loop: uvloop.Loop = cync.loop
+        logger.debug("main: Setting up event loop signal handlers")
+        loop.add_signal_handler(
+            signal.SIGINT, partial(cync.signal_handler, signal.SIGINT)
+        )
+        loop.add_signal_handler(
+            signal.SIGTERM, partial(cync.signal_handler, signal.SIGTERM)
+        )
+        try:
+            cync.loop.run_until_complete(cync.start())
+        except KeyboardInterrupt as ke:
+            logger.info("main: Caught KeyboardInterrupt in exception block!")
+            raise KeyboardInterrupt from ke
+
+        except Exception as e:
+            logger.warning(
+                "main: Caught exception in __main__ cync.start() try block: %s" % e,
+                exc_info=True,
+            )
+        finally:
+            if g and g.mqtt and g.mqtt.client:
+                try:
+                    loop.run_until_complete(g.mqtt.client.__aexit__(None, None, None))
+                except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as ce:
+                    pass
+            if cync and not cync.loop.is_closed():
+                logger.debug("main: Closing loop...")
+                cync.loop.close()
+    elif cli_args.command == "export":
+        logger.debug("main: Exporting Cync devices from cloud service...")
+        cloud_api = CyncCloudAPI()
+        cli_email: Optional[str] = cli_args.email
+        cli_otp_code: Optional[str] = cli_args.code
+        cli_password: Optional[str] = cli_args.password
+        save_auth: bool = cli_args.save_auth
+        auth_output: Optional[Path] = cli_args.auth_output
+        auth_file: Optional[Path] = cli_args.auth_file
+        access_token = None
+        token_user = None
+        if auth_output:
+            auth_output = auth_output.expanduser().resolve()
+        try:
+            if not auth_file:
+                access_token, token_user = cloud_api.authenticate_2fa(
+                    uname=cli_email, otp_code=cli_otp_code
+                )
+            else:
+                raw_file_yaml = yaml.safe_load(auth_file.read_text())
+                access_token = raw_file_yaml["token"]
+                token_user = raw_file_yaml["user"]
+            if not access_token or not token_user:
+                raise ValueError(
+                    "main: Failed to authenticate, no token or user found. Check auth file or email/OTP"
+                )
+
+            # logger.info(
+            #     f"main: Cync Cloud API auth data => user: {token_user} // token: {access_token}"
+            # )
+
+            mesh_networks = cloud_api.get_devices(
+                user=token_user, auth_token=access_token
+            )
+            for mesh in mesh_networks:
+                mesh["properties"] = cloud_api.get_properties(
+                    access_token, mesh["product_id"], mesh["id"]
+                )
+
+            mesh_config = cloud_api.mesh_to_config(mesh_networks)
+            output_file: Path = cli_args.output_file
+            with output_file.open("w") as f:
+                f.write(
+                    "# BE AWARE - the config file will overwrite any env vars set!\n"
+                )
+                f.write(yaml.dump(mesh_config))
+
+        except Exception as e:
+            logger.error(f"main: Export failed: {e}", exc_info=True)
+        else:
+            logger.info(f"main: Exported Cync devices to file: {cli_args.output_file}")
+
+        if save_auth:
+            if not auth_output:
+                logger.info(f"main: --save-auth supplied without --auth-output, using default: ./cync_auth.yaml")
+                auth_output = Path.cwd() / "cync_auth.yaml"
+
+            else:
+                logger.info(
+                    "main: Attempting to save Cync Cloud Auth to file, PLEASE SECURE THIS FILE!"
+                )
+                try:
+                    with auth_output.open("w") as f:
+                        f.write(yaml.dump({"token": access_token, "user": token_user}))
+                except Exception as e:
+                    logger.error(
+                        "main: Failed to save auth token to file: %s" % e, exc_info=True
+                    )
+                else:
+                    logger.info(
+                        f"main: Saved auth token to file: {auth_output.as_posix()}"
+                    )

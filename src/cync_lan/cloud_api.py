@@ -129,7 +129,7 @@ class CyncCloudAPI:
     async def request_otp(self) -> bool:
         """
         Request an OTP code for 2FA authentication.
-        The username and password are defined in the add-on 'configuration' page
+        The username and password are defined in the hass_add-on 'configuration' page
         """
         lp = f"{self.lp}:request_otp:"
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"

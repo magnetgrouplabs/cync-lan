@@ -13,10 +13,9 @@ import uvloop
 
 from .const import *
 from .devices import CyncDevice, CyncTCPDevice
-from .utils import DeviceStatus
 
 if TYPE_CHECKING:
-    from .main import GlobalObject
+    from .structs import GlobalObject, DeviceStatus
 
 __all__ = [
     "CyncLanServer",

@@ -1,5 +1,5 @@
 {
   "name": "CyncLAN",
-  "url": "https://github.com/baudneo/cync-lan/tree/hacs_addon/add-on",
+  "url": "https://github.com/baudneo/cync-lan/tree/hacs_addon/hass_add-on",
   "maintainers": ["baudneo <86508179+baudneo@users.noreply.github.com>"]
 }

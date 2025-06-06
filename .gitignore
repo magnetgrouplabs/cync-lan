@@ -3,3 +3,15 @@ cync_data.json
 cync_mesh.yaml
 /docs/debug.md
 cync-export.yaml
+cync-lan.mono.py
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+*.log
