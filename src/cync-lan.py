@@ -25,6 +25,7 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 g: Optional["GlobalObject"] = None
+cync: Optional["CyncLAN"] = None
 
 def signal_handler(signum, frame: Optional["asyncio.Future"] = None) -> None:
     """
@@ -103,7 +104,21 @@ def check_python_version():
             "Python version 3.9 or higher REQUIRED! you have version: %s" % sys.version
         )
 
-async def main():
+
+
+def main():
+    global cync
+
+    cync = CyncLAN()
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        logger.info("main: Caught KeyboardInterrupt, exiting...")
+    except Exception as e:
+        logger.exception(f"main: Caught exception: {e}")
+
+
+async def async_main():
     check_python_version()
     if CYNC_DEBUG:
         logger.setLevel(logging.DEBUG)
@@ -120,14 +135,3 @@ async def main():
     finally:
         g.loop.run_until_complete(cync.stop())
         g.loop.close()
-
-
-
-if __name__ == "__main__":
-    cync = CyncLAN()
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("main: Caught KeyboardInterrupt, exiting...")
-    except Exception as e:
-        logger.exception(f"main: Caught exception: {e}")
