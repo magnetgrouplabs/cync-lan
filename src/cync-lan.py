@@ -135,3 +135,8 @@ async def async_main():
     finally:
         g.loop.run_until_complete(cync.stop())
         g.loop.close()
+
+if __name__ == "__main__":
+    logger.info("Starting Cync LAN...")
+    main()
+    logger.info("Cync LAN script finished!")
