@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import logging
 import os
@@ -5,16 +7,22 @@ import asyncio
 import signal
 import ssl
 from pathlib import Path
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, TYPE_CHECKING
 
 import uvloop
 
 from .const import *
+from .devices import CyncDevice, CyncTCPDevice
+from .utils import DeviceStatus
+
+if TYPE_CHECKING:
+    from .main import GlobalObject
 
 __all__ = [
     "CyncLanServer",
 ]
 logger = logging.getLogger(CYNC_LOG_NAME)
+g: Optional[GlobalObject] = None
 
 
 def md5sum(filepath: Path):
@@ -46,7 +54,8 @@ def md5sum(filepath: Path):
 
 
 class CyncLanServer:
-    """A class to represent a Cync LAN server that listens for connections from Cync WiFi devices.
+    """
+    A class to represent a Cync LAN server that listens for connections from Cync WiFi devices.
     The WiFi devices can proxy messages to BlueTooth devices. The WiFi devices act as hubs for the BlueTooth mesh.
     """
 
@@ -61,29 +70,27 @@ class CyncLanServer:
     _server: Optional[asyncio.Server] = None
     lp: str = "CyncServer:"
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        cert_file: Optional[str] = None,
-        key_file: Optional[str] = None,
-    ):
-        self.mesh_info_loop_task: Optional[asyncio.Task] = None
+    def __init__(self):
         global g
+        if g is None:
+            from .main import GlobalObject
+            g = GlobalObject()
+
+        self.mesh_info_loop_task: Optional[asyncio.Task] = None
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.mesh_loop_started: bool = False
-        self.host = host
-        self.port = port
-        self.cert_file = cert_file
-        self.key_file = key_file
+        self.host = CYNC_HOST
+        self.port = CYNC_PORT
+        self.cert_file = CYNC_CERT
+        self.key_file = CYNC_KEY
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
         self.known_ids: List[Optional[int]] = []
-        g.server = self
+        g.cync_lan_server = self
 
-    async def close_tcp_device(self, device: "CyncTCPDevice"):
+    async def close_tcp_device(self, device: CyncTCPDevice):
         """Gracefully close TCP device; async task and reader/writer"""
         # check if the receive task is running or in done/exception state.
         lp_id = f"[{device.id}]" if device.id is not None else ""
@@ -152,7 +159,7 @@ class CyncLanServer:
     async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None):
         """Extracted status packet parsing, handles mqtt publishing and device state changes."""
         _id = raw_state[0]
-        device = g.server.devices.get(_id)
+        device = g.cync_lan_server.devices.get(_id)
         if device is None:
             logger.warning(
                 f"Device ID: {_id} not found in devices! device may be disabled in config file or you need to "
@@ -206,7 +213,7 @@ class CyncLanServer:
                     if CYNC_RAW is True
                     else None
                 )
-            await g.mqtt.parse_device_status(device.id, new_state, from_pkt=from_pkt)
+            await g.mqtt_client.parse_device_status(device.id, new_state, from_pkt=from_pkt)
             device.state = state
             device.brightness = brightness
             device.temperature = temp
@@ -214,7 +221,7 @@ class CyncLanServer:
                 device.red = r
                 device.green = _g
                 device.blue = b
-            g.server.devices[device.id] = device
+            g.cync_lan_server.devices[device.id] = device
 
 
     async def start(self):
@@ -254,7 +261,7 @@ class CyncLanServer:
         )
         self.shutting_down = True
         # check tasks
-        device: "CyncTCPDevice"
+        device: CyncTCPDevice
         devices = list(self.tcp_devices.values())
         lp = f"{self.lp}:close:"
         if devices:

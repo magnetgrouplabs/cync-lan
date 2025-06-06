@@ -1,19 +1,18 @@
 """FastAPI application for exporting Cync device configuration from the Cync Cloud API."""
 
-import os
 import logging
+import os
 import sys
 
-from fastapi import FastAPI, Form, HTTPException
+import uvicorn
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import CyncLAN
+from .cloud_api import CyncCloudAPI
+from .const import *
 
-
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 logger = logging.getLogger("cync-lan.exporter")
 formatter = logging.Formatter(
@@ -26,54 +25,50 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-cync_lan = CyncLAN()
-
-
-class AuthRequest(BaseModel):
-    email: str
-    password: str
-
 class OTPRequest(BaseModel):
-    otp: str
+    otp: int
 
-# Store export state temporarily (in-memory, not persistent)
-export_state = {}
+cync_cloud_api = CyncCloudAPI()
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     with open("static/index.html", "r") as f:
         return f.read()
 
-@app.post("/api/export/start")
-async def start_export(auth: AuthRequest):
+@app.get("/api/export/start")
+async def start_export():
+    ret_msg = "Export started successfully"
     try:
-        # Call the cync-lan export function to initiate authentication
-        # Assumes cync_lan.export returns a session ID or token for OTP
-        session_id = await cync_lan.start_device_export(auth.email, auth.password)
-        export_state[auth.email] = {"session_id": session_id}
-        return {"status": "success", "message": "OTP sent to email"}
+        # check token, if it returns true, the access token is valid
+        # if false, we need to request an OTP from Cync Cloud API
+        succ = await cync_cloud_api.check_token()
+        if succ is False:
+            req_succ = await cync_cloud_api.request_otp()
+            if req_succ is True:
+                ret_msg = "OTP requested, check your email for the OTP code to complete the export."
+            else:
+                ret_msg = "Failed to request OTP. Please check your credentials or network connection."
+        else:
+            await cync_cloud_api.export_config_file()
+        return {"status": "success", "message": ret_msg}
     except Exception as e:
         logger.error(f"Export start failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/export/otp")
-async def submit_otp(otp_request: OTPRequest, email: str = Form(...)):
+async def submit_otp(otp_request: OTPRequest):
     try:
-        if email not in export_state:
-            raise HTTPException(status_code=400, detail="No active export session")
-        session_id = export_state[email]["session_id"]
-        # Complete export with OTP and save cync_mesh.yaml
-        config_path = "/root/cync-lan/config/cync_mesh.yaml"
-        await cync_lan.complete_export(session_id, otp_request.otp, config_path)
-        del export_state[email]  # Clear session
-        return {"status": "success", "message": "Export completed", "config_path": config_path}
+        await cync_cloud_api.send_otp(otp_request.otp)
+        return {"status": "success", "message": "Export completed"}
     except Exception as e:
         logger.error(f"Export completion failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/export/download")
 async def download_config():
-    config_path = "/root/cync-lan/config/cync_mesh.yaml"
+    config_path = CYNC_CONFIG_FILE_PATH
     if os.path.exists(config_path):
         return FileResponse(config_path, filename="cync_mesh.yaml")
     raise HTTPException(status_code=404, detail="Config file not found")
@@ -81,8 +76,28 @@ async def download_config():
 class ExportServer:
     def __init__(self):
         self.app = app
+        self.uvi_server = uvicorn.Server(
+            config=uvicorn.Config(app, host="0.0.0.0", port=CYNC_PORT - 1, log_level="info")
+        )
 
     async def start(self):
         """Start the FastAPI server."""
-        import uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=8099)
+        self.uvi_server.run()
+
+    async def stop(self):
+        """Stop the FastAPI server."""
+        # This is a placeholder for any cleanup logic if needed
+        await self.uvi_server.shutdown()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Starting Cync LAN Exporter...")
+    server = ExportServer()
+    try:
+        import asyncio
+        asyncio.run(server.start())
+    except KeyboardInterrupt:
+        logger.info("Stopping Cync LAN Exporter...")
+        asyncio.run(server.stop())
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)

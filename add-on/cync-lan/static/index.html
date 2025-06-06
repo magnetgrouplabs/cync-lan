@@ -36,6 +36,12 @@
         </div>
         <div id="success" class="hidden space-y-4 animate__animated animate__bounceIn">
             <p class="text-green-600 font-medium text-center">Export completed! The configuration file has been saved.</p>
+<!--            <a id="downloadButton"-->
+<!--               href="/api/export/download"-->
+<!--               download="cync_mesh.yaml"-->
+<!--               class="block text-center bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-700 transition duration-300 ease-in-out transform hover:scale-105">-->
+<!--                Download Config File-->
+<!--            </a>-->
             <a href="/api/export/download" class="block text-center bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-700 transition duration-300 ease-in-out transform hover:scale-105">Download cync_mesh.yaml</a>
         </div>
         <div id="error" class="hidden text-red-600 font-medium text-center animate__animated animate__shakeX"></div>
@@ -52,11 +58,10 @@
 
             try {
                 const response = await fetch('/api/export/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
+                    method: 'GET',
                 });
                 const result = await response.json();
+
                 if (response.ok) {
                     if (result.success) {
                         document.getElementById('start').classList.add('hidden');

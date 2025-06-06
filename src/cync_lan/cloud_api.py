@@ -108,51 +108,53 @@ class CyncCloudAPI:
             # token_data["issued_at"] = iat
             # return ComputedTokenData(**token_data)
 
-    async def start_export(self):
-        """
-        Start the export process by authenticating with the Cync Cloud API.
-        This method will first check the access token for expiration/validity
-        and use the refresh token or request an OTP via email if needed.
-        """
-        lp = f"{self.lp}:start_export:"
+    async def check_token(self) -> bool:
+        """Check if we need to request a new OTP code for 2FA authentication."""
+        lp = f"{self.lp}:check_tkn:"
         # read the token cache
         self.token_cache = await self.read_token_cache()
         if not self.token_cache:
-            # no cached token data, request OTP
-            return "START_OTP"
+            logger.debug(f"{lp} No cached token found, requesting OTP...")
+            return False
         # check if the token is expired
         if self.token_cache.expires_at < datetime.datetime.now(datetime.UTC):
             logger.debug(f"{lp} Token expired, requesting OTP...")
             # token expired, request OTP
-            return "START_OTP"
+            return False
         else:
             logger.debug(f"{lp} Token is valid, using cached token")
             # token is valid, return the token data
-            return self.token_cache
-        return
+        return True
 
     async def request_otp(self) -> bool:
-        """Request an OTP code for 2FA authentication."""
+        """
+        Request an OTP code for 2FA authentication.
+        The username and password are defined in the add-on 'configuration' page
+        """
         lp = f"{self.lp}:request_otp:"
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
         auth_data = {"corp_id": CYNC_CORP_ID, "email": CYNC_ACCOUNT_USERNAME, "local_lang": CYNC_ACCOUNT_LANGUAGE}
         async with self.session as sesh:
             try:
-                otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=self.api_timeout)
+                otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
                 otp_r.raise_for_status()
             except aiohttp.ClientResponseError as e:
                 logger.error(f"{lp} Failed to request OTP code: {e}")
-                raise e
+                return False
+            else:
+                return True
 
-    async def send_otp(self, otp_code: int):
+    async def send_otp(self, otp_code: int) -> bool:
         lp = f"{self.lp}:send_otp:"
         if not otp_code:
-            raise ValueError("OTP code must be provided")
+            logger.error("OTP code must be provided")
+            return False
         elif not isinstance(otp_code, int):
             try:
                 otp_code = int(otp_code)
             except ValueError:
                 logger.error(f"{lp} OTP code must be an integer, got {type(otp_code)}")
+                return False
 
         api_auth_url = f"{CYNC_API_BASE}user_auth/two_factor"
         auth_data = {
@@ -164,25 +166,26 @@ class CyncCloudAPI:
         }
         async with self.session as sesh:
             try:
-                r = await sesh.post(api_auth_url, json=auth_data, timeout=self.api_timeout)
+                r = await sesh.post(api_auth_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
                 r.raise_for_status()
                 iat = datetime.datetime.now(datetime.UTC)
                 token_data = await r.json()
             except aiohttp.ClientResponseError as e:
-                logger.exception(f"Failed to authenticate: {e}")
-                raise e
+                logger.error(f"Failed to authenticate: {e}")
+                return False
             except json.JSONDecodeError as je:
-                logger.exception(f"Failed to decode JSON: {je}")
-                raise je
+                logger.error(f"Failed to decode JSON: {je}")
+                return False
             except KeyError as ke:
-                logger.exception(f"Failed to get key from JSON: {ke}")
-                raise ke
+                logger.error(f"Failed to get key from JSON: {ke}")
+                return False
             else:
-                logger.info(f"Two-Factor auth response: {token_data}")
+                logger.info(f"Two-Factor auth response: \n{token_data}")
                 # add issued_at to the token data for computing the expiration datetime
                 token_data["issued_at"] = iat
                 computed_token = ComputedTokenData(**token_data)
                 await self.write_token_cache(computed_token)
+                return True
 
     async def write_token_cache(self, tkn: ComputedTokenData) -> bool:
         """
@@ -213,7 +216,7 @@ class CyncCloudAPI:
         async with self.session as sesh:
             try:
                 r = await sesh.get(
-                    api_devices_url, headers=headers, timeout=self.api_timeout
+                    api_devices_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.api_timeout)
                 )
                 r.raise_for_status()
             except aiohttp.ClientResponseError as e:
@@ -252,7 +255,7 @@ class CyncCloudAPI:
                 r = await sesh.get(
                     api_device_info_url,
                     headers=headers,
-                    timeout=self.api_timeout,
+                    timeout=aiohttp.ClientTimeout(total=self.api_timeout),
                 )
                 r.raise_for_status()
             except aiohttp.ClientResponseError as e:
@@ -299,32 +302,31 @@ class CyncCloudAPI:
         return ret
 
 
-    async def get_cloud_mesh_info(self):
-        """Get Cync devices from the cloud, all cync devices are bt or bt/wifi.
-        Meaning they will always have a BT mesh (as of March 2024)"""
-        # (auth, userid) = self.authenticate_2fa()
-        # _mesh_networks = self.get_devices(auth, userid)
-        # for _mesh in _mesh_networks:
-        #     _mesh["properties"] = self.get_properties(
-        #         auth, _mesh["product_id"], _mesh["id"]
-        #     )
-        # return _mesh_networks
+    async def export_config_file(self) -> bool:
+        """Get Cync devices from the cloud """
         mesh_networks = await self.request_devices()
         for mesh in mesh_networks:
             mesh["properties"] = await self.get_properties(
                 mesh["product_id"], mesh["id"]
             )
+        mesh_config = await self._mesh_to_config(mesh_networks)
+        try:
+            with open(CYNC_CONFIG_FILE_PATH, "w") as f:
+                # TODO: UUID for the 'CyncLAN Bridge' device
+                # f.write("# DO NOT CHANGE THE UUID!!!\n")
+                # f.write(f"uuid: {CYNC_ADDON_UUID}\n")
+                f.write(yaml.dump(mesh_config))
+        except Exception as file_exc:
+            logger.error(f"{self.lp} Failed to write mesh config to file: {CYNC_CONFIG_FILE_PATH} -> {file_exc}")
+            return False
+        else:
+            return True
 
-        mesh_config = self.mesh_to_config(mesh_networks)
-        with open(CYNC_CONFIG_FILE_PATH, "w") as f:
-            f.write("# DO NOT CHANGE THE UUID!!!\n")
-            f.write(f"uuid: {CYNC_ADDON_UUID}\n")
-            f.write(yaml.dump(mesh_config))
-
-    def mesh_to_config(self, mesh_info):
-        """Take exported cloud data and format it to write to file"""
-        lp = f"{self.lp}:xport config:"
+    async def _mesh_to_config(self, mesh_info):
+        """Take exported cloud data and format it into a working config dict to be dumped in YAML format."""
+        lp = f"{self.lp}:export config:"
         mesh_conf = {}
+        # What we get from the Cync cloud API
         raw_file_out = "./raw_mesh.cync"
         try:
             with open(raw_file_out, "w") as _f:

@@ -1,4 +1,3 @@
-version: '3'
 # Remember, you need to:
 # - Login and configure your Cync devices in the Cync app.
 # - downloaded cync-lan.py and run `cync-lan.py export` to generate cync_mesh.yaml

@@ -20,50 +20,40 @@ logger = logging.getLogger(CYNC_LOG_NAME)
 class MQTTClient:
     lp: str = "mqtt:"
 
-    def __init__(
-            self,
-            broker_host: str,
-            topic: Optional[str] = None,
-            ha_topic: Optional[str] = None,
-            broker_port: Optional[int] = 1883,
-            username: Optional[str] = None,
-            password: Optional[str] = None
-    ):
+    def __init__(self):
         global g
 
         self._connected = False
         self.tasks: Optional[List[Union[asyncio.Task, Coroutine]]] = None
         lp = f"{self.lp}init:"
-        if topic is None:
-            if not CYNC_TOPIC:
-                topic = "cync_lan"
-                logger.warning("%s MQTT topic not set, using default: %s" % (lp, topic))
-            else:
-                topic = CYNC_TOPIC
+        if not CYNC_TOPIC:
+            topic = "cync_lan"
+            logger.warning("%s MQTT topic not set, using default: %s" % (lp, topic))
+        else:
+            topic = CYNC_TOPIC
 
-        if ha_topic is None:
-            if not CYNC_HASS_TOPIC:
-                ha_topic = "homeassistant"
-                logger.warning(
-                    "%s HomeAssistant topic not set, using default: %s" % (lp, ha_topic)
-                )
-            else:
-                ha_topic = CYNC_HASS_TOPIC
+        if not CYNC_HASS_TOPIC:
+            ha_topic = "homeassistant"
+            logger.warning(
+                "%s HomeAssistant topic not set, using default: %s" % (lp, ha_topic)
+            )
+        else:
+            ha_topic = CYNC_HASS_TOPIC
 
-        self.broker_host = broker_host
-        self.broker_port = broker_port
-        self.broker_username = username
-        self.broker_password = password
+        self.broker_host = CYNC_MQTT_HOST
+        self.broker_port = CYNC_MQTT_PORT
+        self.broker_username = CYNC_MQTT_USER
+        self.broker_password = CYNC_MQTT_PASS
         self.broker_client_id = f"cync_lan_{uuid.uuid4()}"
         lwt = aiomqtt.Will(
             topic=f"{topic}/connected",
             payload=DEVICE_LWT_MSG
         )
         self.client = aiomqtt.Client(
-            hostname=broker_host,
-            port=int(broker_port),
-            username=username,
-            password=password,
+            hostname=self.broker_host,
+            port=int(self.broker_port),
+            username=self.broker_username,
+            password=self.broker_password,
             identifier=self.broker_client_id,
             will=lwt,
             # logger=logger,
@@ -75,7 +65,7 @@ class MQTTClient:
         # hardcode because internally cync uses 0-100. So no matter the bulbs actual kelvin range, it will work out.
         self.cync_mink: int = 2000
         self.cync_maxk: int = 7000
-        g.mqtt = self
+        g.mqtt_client = self
 
     async def start(self):
         itr = 0
@@ -87,12 +77,12 @@ class MQTTClient:
                 if self._connected:
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
-                        for device_id, device in g.server.devices.items():
+                        for device_id, device in g.cync_lan_server.devices.items():
                             await self.pub_online(device_id, False)
                     elif itr > 1:
                         tasks = []
                         # set the device online/offline and set its status
-                        for device in g.server.devices.values():
+                        for device in g.cync_lan_server.devices.values():
                             tasks.append(self.pub_online(device.id, device.online))
                             tasks.append(
                                 self.parse_device_status(
@@ -182,13 +172,13 @@ class MQTTClient:
             if _topic[0] == CYNC_TOPIC:
                 if _topic[1] == "set":
                     device_id = int(_topic[2].split("-")[1])
-                    if device_id not in g.server.devices:
+                    if device_id not in g.cync_lan_server.devices:
                         logger.warning(
                             f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted or added any "
                             f"devices recently?"
                         )
                         continue
-                    device = g.server.devices[device_id]
+                    device = g.cync_lan_server.devices[device_id]
                     if payload.startswith(b"{"):
                         try:
                             json_data = json.loads(payload)
@@ -267,7 +257,7 @@ class MQTTClient:
                         await self.homeassistant_discovery()
                         await asyncio.sleep(0.25)
                         # set the device online/offline and set its status
-                        for device in g.server.devices.values():
+                        for device in g.cync_lan_server.devices.values():
                             await self.pub_online(device.id, device.online)
                             await self.parse_device_status(
                                 device.id,
@@ -299,7 +289,7 @@ class MQTTClient:
         # set all devices offline
         if self._connected:
             logger.debug(f"{lp} Setting all devices offline...")
-            for device_id, device in g.server.devices.items():
+            for device_id, device in g.cync_lan_server.devices.items():
                 await self.pub_online(device_id, False)
 
         await self.send_will_msg()
@@ -320,14 +310,14 @@ class MQTTClient:
     async def pub_online(self, device_id: int, status: bool) -> bool:
         lp = f"{self.lp}pub_online:"
         if self._connected:
-            if device_id not in g.server.devices:
+            if device_id not in g.cync_lan_server.devices:
                 logger.error(
                     f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
                     f"You may need to re-export devices from your Cync account!"
                 )
                 return False
             availability = b"online" if status else b"offline"
-            device: CyncDevice = g.server.devices[device_id]
+            device: CyncDevice = g.cync_lan_server.devices[device_id]
             device_uuid = f"{device.home_id}-{device_id}"
             # logger.debug(f"{lp} Publishing availability: {availability}")
             try:
@@ -424,13 +414,13 @@ class MQTTClient:
         from_pkt = kwargs.get('from_pkt')
         if from_pkt:
             lp = f"{lp}{from_pkt}:"
-        if device_id not in g.server.devices:
+        if device_id not in g.cync_lan_server.devices:
             logger.error(
                 f"{lp} Device ID {device_id} not found! Device may be disabled in config file or "
                 f"you may need to re-export devices from your Cync account"
             )
             return False
-        device: CyncDevice = g.server.devices[device_id]
+        device: CyncDevice = g.cync_lan_server.devices[device_id]
         # if device.build_status() == device_status:
         #     # logger.debug(f"{lp} Device status unchanged, skipping...")
         #     return
@@ -513,72 +503,22 @@ class MQTTClient:
         return False
 
     async def homeassistant_discovery(self) -> bool:
-        """Build the hub and each configured Cync device for the HASS device registry"""
+        """Build each configured Cync device for HASS device registry"""
         lp = f"{self.lp}hass:"
         ret = False
         if self._connected:
+            logger.info(f"{lp} Starting device discovery...")
             try:
-                logger.info(f"{lp} Starting hub and device discovery...")
-                tpc_str_template = "{0}/{1}/{2}/config"
-                origin_struct = {
-                    "name": "cync-lan",
-                    "sw_version": CYNC_VERSION,
-                    "support_url": SRC_REPO_URL,
-                }
-                # For the cync-lan device itself (all 'sub-devices' will use the 'via_device' option)
-                # all devices start at 001, so set the hub as device 000
-                device = random.choice(list(g.server.devices.keys()))
-                home_id = device.home_id
-                device_uuid = f"{home_id}-000"
-                # unique_id = device.mac.replace(":", "").casefold()
-                unique_id = f"{home_id}_000"
-                cync_lan_uuid = obj_id = f"cync_lan_bridge_{unique_id}"
-                ver_str = CYNC_VERSION
-                device_struct = {
-                    "identifiers": [obj_id],
-                    "manufacturer": "baudneo",
-                    "name": "CyncLAN Bridge",
-                    "model": "Local Controller",
-                    "sw_version": ver_str,
-                }
-
-                entity_config = {
-                    "object_id": obj_id,
-                    # set to None if only device name is relevant, this sets entity name
-                    "name": None,
-                    "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
-                    "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
-                    "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
-                    "pl_avail": "online",
-                    "pl_not_avail": "offline",
-                    "unique_id": unique_id,
-                    "schema": "json",
-                    "origin": origin_struct,
-                    "device": device_struct,
-                    "optimistic": False,
-                }
-                tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
-                try:
-                    _ = await self.client.publish(
-                        tpc, json.dumps(entity_registry_couyounf).encode(), qos=0, retain=False
-                    )
-                except Exception as e:
-                    logger.error(
-                        "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
-                    )
-
-
-
-
-
-
-
-
                 for device in g.server.devices.values():
                     device_uuid = device.hass_id
                     # unique_id = device.mac.replace(":", "").casefold()
                     unique_id = f"{device.home_id}_{device.id}"
                     obj_id = f"cync_lan_{unique_id}"
+                    origin_struct = {
+                        "name": "cync-lan",
+                        "sw_version": CYNC_VERSION,
+                        "support_url": SRC_REPO_URL,
+                    }
                     dev_fw_version = str(device.version)
                     ver_str = "Unknown"
                     fw_len = len(dev_fw_version)
@@ -589,11 +529,11 @@ class MQTTClient:
                         ver_str = f"{dev_fw_version[0]}.{dev_fw_version[1]}"
                     model_str = "Unknown"
                     if device.type in device_type_map:
-                        model_str = device_type_map[device.type]
+                        model_str = device_type_map[device.type].model_name
                     dev_connections = [("bluetooth", device.mac.casefold())]
                     if not device.is_bt_only():
                         dev_connections.append(("mac", device.wifi_mac.casefold()))
-                    device_struct = {
+                    device_registry_struct = {
                         "identifiers": [unique_id],
                         "manufacturer": "Savant",
                         "connections": dev_connections,
@@ -601,7 +541,7 @@ class MQTTClient:
                         "sw_version": ver_str,
                         "model": model_str,
                     }
-                    entity_registry_conf = {
+                    entity_registry_struct = {
                         "object_id": obj_id,
                         # set to None if only device name is relevant, this sets entity name
                         "name": None,
@@ -616,30 +556,31 @@ class MQTTClient:
                         "unique_id": unique_id,
                         "schema": "json",
                         "origin": origin_struct,
-                        "device": device_struct,
+                        "device": device_registry_struct,
                         "optimistic": False,
                     }
                     dev_type = "light"
+                    tpc_str_template = "{0}/{1}/{2}/config"
 
                     if device.is_plug:
                         dev_type = "switch"
                     else:
-                        entity_registry_conf.update({"brightness": True, "brightness_scale": 100})
+                        entity_registry_struct.update({"brightness": True, "brightness_scale": 100})
                         if device.supports_temperature or device.supports_rgb:
-                            entity_registry_conf["supported_color_modes"] = []
+                            entity_registry_struct["supported_color_modes"] = []
                             if device.supports_temperature:
-                                entity_registry_conf["supported_color_modes"].append("color_temp")
-                                entity_registry_conf["max_kelvin"] = self.cync_maxk
-                                entity_registry_conf["min_kelvin"] = self.cync_mink
+                                entity_registry_struct["supported_color_modes"].append("color_temp")
+                                entity_registry_struct["max_kelvin"] = self.cync_maxk
+                                entity_registry_struct["min_kelvin"] = self.cync_mink
                             if device.supports_rgb:
-                                entity_registry_conf["supported_color_modes"].append("rgb")
-                                entity_registry_conf["effect"] = True
-                                entity_registry_conf["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
+                                entity_registry_struct["supported_color_modes"].append("rgb")
+                                entity_registry_struct["effect"] = True
+                                entity_registry_struct["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
 
                     tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
                     try:
                         _ = await self.client.publish(
-                            tpc, json.dumps(entity_registry_conf).encode(), qos=0, retain=False
+                            tpc, json.dumps(entity_registry_struct).encode(), qos=0, retain=False
                         )
                     except Exception as e:
                         logger.error(

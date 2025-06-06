@@ -20,7 +20,7 @@ RUN set -x \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -x \
-    && mkdir -p /root/cync-lan/certs \
+    && mkdir -p /root/cync-lan/certs /root/cync-lan/var \
     && openssl req -x509 -newkey rsa:4096 \
         -keyout '/root/cync-lan/certs/key.pem' -out '/root/cync-lan/certs/cert.pem' \
         -subj '/CN=*.xlink.cn' -sha256 -days 3650 -nodes

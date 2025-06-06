@@ -12,12 +12,12 @@ startup: application
 boot: auto
 ports:
   23779/tcp: 23779
-  8099/tcp: null
+  23778/tcp: null
 ports_description:
   23779/tcp: "TCP port for Cync device communication"
-  8099/tcp: "Web interface for device export (ingress)"
+  23778/tcp: "Web interface for device export (ingress)"
 ingress: true
-ingress_port: 8099
+ingress_port: 23778
 ingress_entry: /
 panel_icon: mdi:lightbulb
 panel_title: "CyncLAN"

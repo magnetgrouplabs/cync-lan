@@ -2,3 +2,4 @@ certs
 cync_data.json
 cync_mesh.yaml
 /docs/debug.md
+cync-export.yaml
