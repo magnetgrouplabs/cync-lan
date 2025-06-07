@@ -120,26 +120,37 @@ device_type_map = {
     21: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+        model_id="CLEDA1911C2",
+        lumens=760,
     ),
     22: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lum]",
+        model_id="CLEDR3010C2",
+        lumens=700,
     ),
     26: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lum]",
+        model_id="CLEDR309S2",
+        lumens=800,
     ),
     30: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
+        model_id="CLEDA1911C2",
+        lumens=760,
     ),
     31: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lum]",
+        model_id="CLEDA1911C2",
+        lumens=800,
     ),
     37: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
+        model_id="CSWDMOCBWF1",
     ),
     42: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
@@ -206,18 +217,26 @@ device_type_map = {
     138: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color BR30 Floodlight [CLEDR309CD1 750 lum]",
+        lumens=750,
+        model_id="CLEDR309CD1",
     ),
     140: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color Outdoor PAR38 Floodlight [CLEDP3815CD1 1300 lum]",
+        lumens=1300,
+        model_id="CLEDP3815CD1",
     ),
     146: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color Edison ST19 Bulb [CLEDST196CDGS 500 lum]",
+        lumens=500,
+        model_id="CLEDST196CDGS",
     ),
     147: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color Edison G25 Bulb [CLEDG256CDGS 500 lum]",
+        lumens=500,
+        model_id="CLEDG256CDGS",
     ),
     148: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
@@ -229,6 +248,8 @@ device_type_map = {
     ),
     169: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
+        lumens=760,
+        model_id="CFIXCNLR4CRVD",
         model_name="Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lum]",
     ),
     224: DeviceTypeInfo(

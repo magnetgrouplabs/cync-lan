@@ -1,12 +1,15 @@
 import os
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple, Dict
 import zoneinfo
 
 import tzlocal
 
-from . import __version__
+from cync_lan import __version__
 
 __all__ = [
+    "CYNC_STATIC_DIR",
+    "INGRESS_PORT",
+    "CYNC_UUID_PATH",
     "FACTORY_EFFECTS_BYTES",
     "LOCAL_TZ",
     "CYNC_CONFIG_FILE_PATH",
@@ -24,8 +27,8 @@ __all__ = [
     "CYNC_MQTT_PORT",
     "CYNC_MQTT_USER",
     "CYNC_MQTT_PASS",
-    "CYNC_CERT",
-    "CYNC_KEY",
+    "CYNC_DEVICE_CERT",
+    "CYNC_DEVICE_KEY",
     "CYNC_TOPIC",
     "CYNC_HASS_TOPIC",
     "CYNC_HASS_STATUS_TOPIC",
@@ -64,14 +67,13 @@ CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
 CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
 CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
 CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
-CYNC_CERT = os.environ.get("CYNC_CERT", "certs/cert.pem")
-CYNC_KEY = os.environ.get("CYNC_KEY", "certs/key.pem")
-CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan")
+CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan_NEW")
 CYNC_HASS_TOPIC = os.environ.get("CYNC_HASS_TOPIC", "homeassistant")
 CYNC_HASS_STATUS_TOPIC = os.environ.get("CYNC_HASS_STATUS_TOPIC", "status")
 CYNC_HASS_BIRTH_MSG = os.environ.get("CYNC_HASS_BIRTH_MSG", "online")
 CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
-CYNC_PORT = os.environ.get("CYNC_PORT", 23779)
+CYNC_PORT = 23779
+INGRESS_PORT = 23778
 CYNC_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
 CYNC_CHUNK_SIZE = os.environ.get("CYNC_CHUNK_SIZE", 2048)
 YES_ANSWER = ("true", "1", "yes", "y", "t", 1)
@@ -89,10 +91,15 @@ RAW_MSG = (
     " Set the CYNC_RAW_DEBUG env var to 1 to see the data" if CYNC_RAW is False else ""
 )
 
-CYNC_CONFIG_FILE_PATH: str = "/root/cync-lan/config/cync_mesh.yaml"
-CYNC_CLOUD_AUTH_PATH: str = "/root/cync-lan/var/.cloud_auth.yaml"
+CYNC_BASE_DIR: str = os.environ.get("CYNC_BASE_DIR" ,"/opt")
+CYNC_CONFIG_FILE_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/cync_mesh.yaml"
+CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/.cloud_auth.yaml"
+CYNC_UUID_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/uuid.txt"
+CYNC_DEVICE_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
+CYNC_DEVICE_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
+CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan/hass_add-on/cync-lan/static"
 
-FACTORY_EFFECTS_BYTES = {
+FACTORY_EFFECTS_BYTES: Dict[str, Tuple[int, int]] = {
             "candle": (int(0x01), int(0xF1)),
             "cyber": (int(0x43), int(0x9F)),
             "rainbow": (int(0x02), int(0x7A)),

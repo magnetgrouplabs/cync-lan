@@ -10,10 +10,12 @@ import aiohttp
 import yaml
 from pydantic import BaseModel, Field, computed_field
 
-from .const import *
-from .devices import CyncDevice
+from cync_lan.const import *
+from cync_lan.devices import CyncDevice
+from cync_lan.structs import GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
+g = GlobalObject()
 
 class RawTokenData(BaseModel):
     """
@@ -67,10 +69,17 @@ class CyncCloudAPI:
     token_cache: Optional[ComputedTokenData]
 
     _http_session: Optional[aiohttp.ClientSession] = None
+    # Singleton
+    _instance: Optional['CyncCloudAPI'] = None
 
-    def __init__(self, **kwargs):
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def     __init__(self, **kwargs):
         self.api_timeout = kwargs.get("api_timeout", 8)
-        self._http_session = kwargs.get("session")
+        self.session = g.http_session
 
     @property
     def session(self) -> Optional[aiohttp.ClientSession]:
@@ -81,8 +90,9 @@ class CyncCloudAPI:
     def session(self, session: aiohttp.ClientSession):
         """Set the aiohttp session."""
         if not isinstance(session, aiohttp.ClientSession):
-            raise TypeError("session must be an instance of aiohttp.ClientSession")
-        self._http_session = session
+            pass
+        else:
+            self._http_session = session
 
     async def read_token_cache(self) -> Optional[ComputedTokenData]:
         """
@@ -133,7 +143,16 @@ class CyncCloudAPI:
         """
         lp = f"{self.lp}:request_otp:"
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
+        if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
+            logger.error(f"{lp} Cync account username or password not set, cannot request OTP!")
+            return False
         auth_data = {"corp_id": CYNC_CORP_ID, "email": CYNC_ACCOUNT_USERNAME, "local_lang": CYNC_ACCOUNT_LANGUAGE}
+        if self.session is None:
+            logger.debug(f"{lp} No aiohttp session found, creating a new one ({g.http_session=})")
+            if g.http_session is not None:
+                self.session = g.http_session
+            else:
+                self.session = aiohttp.ClientSession()
         async with self.session as sesh:
             try:
                 otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
@@ -312,9 +331,10 @@ class CyncCloudAPI:
         mesh_config = await self._mesh_to_config(mesh_networks)
         try:
             with open(CYNC_CONFIG_FILE_PATH, "w") as f:
-                # TODO: UUID for the 'CyncLAN Bridge' device
-                # f.write("# DO NOT CHANGE THE UUID!!!\n")
-                # f.write(f"uuid: {CYNC_ADDON_UUID}\n")
+                if CYNC_ADDON_UUID:
+                    f.write("# DO NOT CHANGE THE UUID!!!\n")
+                    f.write("# It is used for the CyncLAN Controller/Bridge device in HASS\n")
+                    f.write(f"uuid: {CYNC_ADDON_UUID}\n")
                 f.write(yaml.dump(mesh_config))
         except Exception as file_exc:
             logger.error(f"{self.lp} Failed to write mesh config to file: {CYNC_CONFIG_FILE_PATH} -> {file_exc}")

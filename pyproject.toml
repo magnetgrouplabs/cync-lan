@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cync_lan"
-version = "0.1.12"
+version = "0.2.0a1"
 description = "A Python library for local async MQTT control of Cync/C by GE smart devices"
 readme = "README.md"
 authors = [{name = "baudneo", email = "86508179+baudneo@users.noreply.github.com"}]
@@ -20,16 +20,17 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    'pyyaml==6.0.2',
-    'uvloop>=0.21.0',
-    'aiomqtt==2.3.0',
+    "pyyaml==6.0.2",
+    "uvloop>=0.21.0",
+    "aiomqtt==2.3.0",
     "aiohttp>=3.10.8",
-    'fastapi>=0.115.12',
-    'uvicorn>=0.34.3',
+    "fastapi>=0.115.12",
+    "uvicorn>=0.34.3",
+    "tzlocal>=5.3.1",
 ]
 
 [project.scripts]
-cync-lan = "cync_lan.cync-lan:main"
+cync-lan = "cync_lan.main:main"
 
 [project.urls]
 Homepage = "https://github.com/baudneo/cync-lan"

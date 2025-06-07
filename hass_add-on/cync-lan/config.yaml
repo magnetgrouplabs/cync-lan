@@ -22,6 +22,8 @@ ingress_entry: /
 panel_icon: mdi:lightbulb
 panel_title: "CyncLAN"
 options:
+  CYNC_ACCOUNT_USERNAME: ""
+  CYNC_ACCOUNT_PASSWORD: ""
   CYNC_MQTT_HOST: "homeassistant.local"
   CYNC_MQTT_PORT: 1883
   CYNC_MQTT_USER: ""
@@ -41,3 +43,4 @@ map:
   - config:rw
 url: "https://github.com/baudneo/cync-lan/tree/python"
 homeassistant_api: false
+host_network: true

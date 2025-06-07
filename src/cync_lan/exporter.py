@@ -3,6 +3,8 @@
 import logging
 import os
 import sys
+from pathlib import Path
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -10,8 +12,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .cloud_api import CyncCloudAPI
-from .const import *
+from cync_lan.cloud_api import CyncCloudAPI
+from cync_lan.const import *
 
 
 logger = logging.getLogger("cync-lan.exporter")
@@ -20,21 +22,23 @@ formatter = logging.Formatter(
     "%m/%d/%y %H:%M:%S",
 )
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
+handler.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
+
 
 class OTPRequest(BaseModel):
     otp: int
 
 cync_cloud_api = CyncCloudAPI()
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=Path(CYNC_STATIC_DIR).expanduser().resolve()), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
-    with open("static/index.html", "r") as f:
+    with Path(CYNC_STATIC_DIR + "/index.html").expanduser().resolve().open("r") as f:
         return f.read()
 
 @app.get("/api/export/start")
@@ -54,7 +58,7 @@ async def start_export():
             await cync_cloud_api.export_config_file()
         return {"status": "success", "message": ret_msg}
     except Exception as e:
-        logger.error(f"Export start failed: {str(e)}")
+        logger.exception(f"Export start failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/export/otp")
@@ -74,30 +78,28 @@ async def download_config():
     raise HTTPException(status_code=404, detail="Config file not found")
 
 class ExportServer:
+    lp = "ExportServer:"
+    _instance: Optional['ExportServer'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
         self.app = app
         self.uvi_server = uvicorn.Server(
-            config=uvicorn.Config(app, host="0.0.0.0", port=CYNC_PORT - 1, log_level="info")
+            config=uvicorn.Config(app, host=CYNC_HOST, port=INGRESS_PORT, log_level="info")
         )
 
     async def start(self):
         """Start the FastAPI server."""
-        self.uvi_server.run()
+        lp = f"{self.lp}start:"
+        logger.info(f"{lp} Starting FastAPI export server on {CYNC_HOST}:{INGRESS_PORT}")
+        await self.uvi_server.serve()
 
     async def stop(self):
         """Stop the FastAPI server."""
-        # This is a placeholder for any cleanup logic if needed
+        lp = f"{self.lp}stop:"
+        logger.info(f"{lp} Stopping FastAPI export server...")
         await self.uvi_server.shutdown()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    logger.info("Starting Cync LAN Exporter...")
-    server = ExportServer()
-    try:
-        import asyncio
-        asyncio.run(server.start())
-    except KeyboardInterrupt:
-        logger.info("Stopping Cync LAN Exporter...")
-        asyncio.run(server.stop())
-    except Exception as e:
-        logger.error(f"An error occurred: {e}", exc_info=True)

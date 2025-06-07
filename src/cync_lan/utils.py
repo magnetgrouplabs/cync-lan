@@ -2,7 +2,7 @@ import logging
 import struct
 from typing import Optional, List, Tuple
 
-from .const import *
+from cync_lan.const import *
 
 
 logger = logging.getLogger(CYNC_LOG_NAME)

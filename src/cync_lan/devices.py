@@ -7,11 +7,11 @@ import time
 import datetime
 from typing import Optional, Union, List, Dict, Coroutine, TYPE_CHECKING
 
-from .const import *
-from .utils import parse_unbound_firmware_version, bytes2list
+from cync_lan.const import *
+from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 
 if TYPE_CHECKING:
-    from .structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
+    from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
         PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
 
 __all__ = [
@@ -29,7 +29,6 @@ class CyncDevice:
 
     lp = "CyncDevice:"
     id: int = None
-    tasks: Tasks = Tasks()
     type: Optional[int] = None
     _supports_rgb: Optional[bool] = None
     _supports_temperature: Optional[bool] = None

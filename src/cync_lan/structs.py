@@ -7,27 +7,34 @@ from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
 import aiohttp
 import uvloop
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic.dataclasses import dataclass
 
-from .const import *
+from cync_lan.const import *
 
 if TYPE_CHECKING:
-    from .exporter import ExportServer
-    from .mqtt_client import MQTTClient
-    from .server import CyncLanServer
+    from cync_lan.exporter import ExportServer
+    from cync_lan.mqtt_client import MQTTClient
+    from cync_lan.server import CyncLanServer
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
 class GlobalObject:
-    cync_lan_server: CyncLanServer
-    mqtt_client: MQTTClient
-    http_session: aiohttp.ClientSession
-    loop: Union[uvloop.Loop, asyncio.AbstractEventLoop]
-    export_server: ExportServer
+    cync_lan_server: Optional[CyncLanServer] = None
+    mqtt_client: Optional[MQTTClient] = None
+    http_session: Optional[aiohttp.ClientSession] = None
+    loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
+    export_server: Optional[ExportServer] = None
+
+    _instance: Optional['GlobalObject'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class Tasks:
     receive: Optional[asyncio.Task] = None
     send: Optional[asyncio.Task] = None

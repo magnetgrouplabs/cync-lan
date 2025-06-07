@@ -11,11 +11,11 @@ from typing import Dict, Optional, Union, List, TYPE_CHECKING
 
 import uvloop
 
-from .const import *
-from .devices import CyncDevice, CyncTCPDevice
+from cync_lan.const import *
+from cync_lan.devices import CyncDevice, CyncTCPDevice
 
 if TYPE_CHECKING:
-    from .structs import GlobalObject, DeviceStatus
+    from cync_lan.structs import GlobalObject, DeviceStatus
 
 __all__ = [
     "CyncLanServer",
@@ -68,11 +68,17 @@ class CyncLanServer:
     loop: Union[asyncio.AbstractEventLoop, uvloop.Loop]
     _server: Optional[asyncio.Server] = None
     lp: str = "CyncServer:"
+    _instance: Optional['CyncLanServer'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
         global g
         if g is None:
-            from .main import GlobalObject
+            from cync_lan.main import GlobalObject
             g = GlobalObject()
 
         self.mesh_info_loop_task: Optional[asyncio.Task] = None
@@ -81,8 +87,8 @@ class CyncLanServer:
         self.mesh_loop_started: bool = False
         self.host = CYNC_HOST
         self.port = CYNC_PORT
-        self.cert_file = CYNC_CERT
-        self.key_file = CYNC_KEY
+        self.cert_file = CYNC_DEVICE_CERT
+        self.key_file = CYNC_DEVICE_KEY
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
@@ -135,7 +141,7 @@ class CyncLanServer:
         # turn off all the SSL verification
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
-        # ascertained from debugging using socat
+        # figured out from debugging using socat
         ciphers = [
             "ECDHE-RSA-AES256-GCM-SHA384",
             "ECDHE-RSA-AES128-GCM-SHA256",
@@ -246,33 +252,27 @@ class CyncLanServer:
                 async with self._server:
                     await self._server.serve_forever()
             except asyncio.CancelledError as ce:
-                logger.debug(
-                    "%s Server cancelled (task.cancel() ?): %s" % (self.lp, ce)
-                )
+                pass
             except Exception as e:
                 logger.error("%s Server Exception: %s" % (self.lp, e), exc_info=True)
 
-            logger.info(f"{self.lp} end of start()")
+            # logger.info(f"{self.lp} end of start()")
 
     async def stop(self):
-        logger.debug(
-            "%s stop() called, closing each TCP communication device..." % self.lp
-        )
         self.shutting_down = True
-        # check tasks
+        lp = f"{self.lp}stop:"
         device: CyncTCPDevice
         devices = list(self.tcp_devices.values())
-        lp = f"{self.lp}:close:"
         if devices:
             for device in devices:
                 try:
                     await device.close()
                 except Exception as e:
-                    logger.error("%s Error closing device: %s" % (lp, e), exc_info=True)
+                    logger.error("%s Error closing Cync Wi-Fi device connection: %s" % (lp, e), exc_info=True)
                 else:
-                    logger.debug(f"{lp} Device closed")
+                    logger.debug(f"{lp} Cync Wi-Fi device connection closed")
         else:
-            logger.debug(f"{lp} No devices to close!")
+            logger.debug(f"{lp} No Cync Wi-Fi devices connected!")
 
         if self._server:
             if self._server.is_serving():
@@ -282,23 +282,6 @@ class CyncLanServer:
                 logger.debug("%s shut down!" % lp)
             else:
                 logger.debug("%s not running!" % lp)
-
-        # cancel tasks
-        if self.mesh_info_loop_task:
-            if self.mesh_info_loop_task.done():
-                pass
-            else:
-                self.mesh_info_loop_task.cancel()
-                await self.mesh_info_loop_task
-        # for task in global_tasks:
-        #     if task.done():
-        #         continue
-        #     logger.debug("%s Cancelling task: %s" % (lp, task))
-        #     task.cancel()
-        # TODO: cleaner exit
-
-        # logger.debug("%s stop() complete, calling loop.stop()" % lp)
-        # self.loop.stop()
 
     async def _register_new_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter

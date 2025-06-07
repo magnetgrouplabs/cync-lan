@@ -2,7 +2,6 @@ FROM python:3.13-slim-bookworm AS final
 
 #ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV CYNC_VERSION="0.1.12"
 
 WORKDIR /root/cync-lan
 
@@ -11,7 +10,8 @@ RUN set -x \
     && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
         openssl git build-essential cmake \
     && pip install --no-cache-dir -U pip \
-    && pip install --no-cache-dir 'github+https://github.com/baudneo/cync-lan/tree/hacs_addon' \
+    && pip install --no-cache-dir  setuptools wheel \
+    && pip install --no-cache-dir "github+https://github.com/baudneo/cync-lan/tree/hass_addon" \
     && DEBIAN_FRONTEND=noninteractive apt-get remove -yq git build-essential cmake \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
     && DEBIAN_FRONTEND=noninteractive apt-get clean \
@@ -20,14 +20,13 @@ RUN set -x \
 RUN set -x \
     && mkdir -p /root/cync-lan/certs /root/cync-lan/var \
     && openssl req -x509 -newkey rsa:4096 \
-        -keyout '/root/cync-lan/certs/key.pem' -out '/root/cync-lan/certs/cert.pem' \
+        -keyout '/opt/cync-lan/certs/key.pem' -out '/opt/cync-lan/certs/cert.pem' \
         -subj '/CN=*.xlink.cn' -sha256 -days 3650 -nodes
 
-COPY ./src/cync-lan.py /root/cync-lan
-
 VOLUME /root/cync-lan/config
-
+# cync devices connect to this port
 EXPOSE 23779
+# ingress port for Home Assistant to connect to
 EXPOSE 23778
 
 ENV CYNC_MQTT_HOST="homeassistant.local" \
@@ -48,4 +47,6 @@ ENV CYNC_MQTT_HOST="homeassistant.local" \
     CYNC_MAX_TCP_CONN=8 \
     CYNC_TCP_WHITELIST=""
 
-CMD ["python3", "/root/cync-lan/cync-lan.py"]
+#CMD ["python3", "/root/cync-lan/main.py"]
+# pyproject.toml has a scripts entry point that links to the main() func in main.py
+CMD ["cync-lan"]

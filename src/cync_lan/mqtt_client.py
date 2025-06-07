@@ -1,27 +1,35 @@
 import asyncio
+import json
+import logging
 import os
 import signal
-import json
 import uuid
-import logging
-import random
 from typing import Optional, Union, List, Coroutine
 
-import  aiomqtt
+import aiomqtt
 
-from .const import *
-from .structs import DeviceStatus
-from .devices import CyncDevice
-from .metadata.model_info import device_type_map
+from cync_lan.const import *
+from cync_lan.devices import CyncDevice
+from cync_lan.metadata.model_info import device_type_map
+from cync_lan.structs import DeviceStatus, GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
-
+g: Optional[GlobalObject] = None
 
 class MQTTClient:
     lp: str = "mqtt:"
+    _instance: Optional['MQTTClient'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
         global g
+
+        if g is None:
+            g = GlobalObject()
 
         self._connected = False
         self.tasks: Optional[List[Union[asyncio.Task, Coroutine]]] = None
@@ -65,7 +73,6 @@ class MQTTClient:
         # hardcode because internally cync uses 0-100. So no matter the bulbs actual kelvin range, it will work out.
         self.cync_mink: int = 2000
         self.cync_maxk: int = 7000
-        g.mqtt_client = self
 
     async def start(self):
         itr = 0
@@ -125,13 +132,9 @@ class MQTTClient:
                     logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
                     await asyncio.sleep(delay)
         except asyncio.CancelledError as c_exc:
-            logger.debug(f"{lp} MQTT start() cancelled: {c_exc}")
+            pass
         except Exception as exc:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
-
-        logger.debug(f"{lp} END OF MQTT start(), no more attempts to connect to the MQTT broker will be made, therefore we exit...")
-        # send sigterm to bring async loop down, this should restart the docker container
-        os.kill(os.getpid(), signal.SIGTERM)
 
     async def connect(self) -> bool:
         lp = f"{self.lp}connect:"
@@ -291,11 +294,10 @@ class MQTTClient:
             logger.debug(f"{lp} Setting all devices offline...")
             for device_id, device in g.cync_lan_server.devices.items():
                 await self.pub_online(device_id, False)
-
-        await self.send_will_msg()
+            await self.send_will_msg()
         try:
             logger.debug(
-                f"{lp} Calling disconnect..."
+                f"{lp} Disconnecting from broker..."
             )
             await self.client.__aexit__(None, None, None)
         except aiomqtt.MqttError as ce:
@@ -303,7 +305,7 @@ class MQTTClient:
         except Exception as e:
             logger.warning("%s MQTT disconnect failed: %s" % (lp, e), exc_info=True)
         else:
-            logger.info(f"{lp} MQTT client disconnected...")
+            logger.info(f"{lp} Disconnected from MQTT broker")
         finally:
             self._connected = False
 
