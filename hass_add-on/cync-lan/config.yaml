@@ -1,5 +1,5 @@
 name: "CyncLAN Controller"
-version: "0.1.12"
+version: "0.2.0a1"
 slug: "cync-lan"
 description: "Local async HTTP/MQTT controller for Cync / C by GE smart devices with device export"
 arch:
@@ -41,6 +41,6 @@ schema:
   CYNC_DEBUG: bool
 map:
   - config:rw
-url: "https://github.com/baudneo/cync-lan/tree/python"
+url: "https://github.com/baudneo/cync-lan/tree/hass_addon"
 homeassistant_api: false
 host_network: true
