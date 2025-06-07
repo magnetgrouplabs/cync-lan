@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 
 from cync_lan.const import *
-from cync_lan.server import logger
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
