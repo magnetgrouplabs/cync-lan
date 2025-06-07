@@ -1,0 +1,1 @@
+from model_info import device_type_map
