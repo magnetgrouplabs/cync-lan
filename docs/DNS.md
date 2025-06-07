@@ -11,6 +11,7 @@ Older firmware:
 
 Newer firmware:
  - `cm.gelighting.com`
+ - `cm-sec.gelighting.com`
 
 
 # OPNsense
@@ -18,11 +19,11 @@ There are a few different methods using OPNsense depending on your setup. Unboun
 requesting device IP, DNS redirection.
 
 ## Unbound DNS
-To perform domain level DNS redirection (all devices that request `cm.gelighting.com` will be redirected to ip: 10.0.1.9)
+To perform domain level DNS redirection (all devices that request `cm.gelighting.com` / `cm-sec.gelighting.com` will be redirected to ip: 10.0.1.9)
 
 - Go to `Services`>`Unbound DNS`>`Overrides`.
 ![Unbound DNS Overrides](./assets/opnsense_unbound_host_overrides_.png)
-- Create a new override for `cm.gelighting.com` or `cm-ge.xlink.cn` and point it to your local server.
+- Create a new override for `cm.gelighting.com`, `cm-sec.gelighting.com` or `cm-ge.xlink.cn` and point it to your local server.
 ![Unbound DNS Overrides](./assets/opnsense_unbound_edit_host_overrides.png)
 - Click Save.
 - Power cycle cync devices.
@@ -39,11 +40,11 @@ You can use `views` to selectively route DNS requests based on the requesting de
 ![Unbound DNS Restart](./assets/opnsense_unbound_restart.png)
 - Power cycle cync devices.
 
-The following example will reroute DNS requests for `cm.gelighting.com` to local IP `10.0.1.9` (this is where `cync-lan` server should be running) **only for requesting device IPs** `10.0.1.167` and `10.0.1.112` (These should be Cync WiFi devices).
+The following example will reroute DNS requests for `cm.gelighting.com` and `cm-sec.gelighting.com` to local IP `10.0.1.9` (this is where `cync-lan` server should be running) **only for requesting device IPs** `10.0.1.167` and `10.0.1.112` (These should be Cync WiFi devices).
 
 
 >[!WARNING]
-> NOTICE the trailing `.` after `cm.gelighting.com.` in `local-data:`.
+> NOTICE the trailing `.` after `cm.gelighting.com.` in `local-data:`. You can have numerous `local-data:` fields.
 > 
 > `local-zone` is your DNS domain (.local, .lan, .whatever). Notice there is no leading `.` in `local-zone`!!.
 
@@ -55,6 +56,7 @@ view:
 name: "cync-override"
 local-zone: "homelab" static
 local-data: "cm.gelighting.com. 90 IN A 10.0.1.9"
+local-data: "cm-sec.gelighting.com. 90 IN A 10.0.1.9"
 ```
 
 >[!TIP]
@@ -88,7 +90,7 @@ As far as I know, Pi-Hole does not support selective DNS routing, only network w
 - Select `DNS Records`.
 ![Pi Hole Local DNS](./assets/pi-hole-local-dns-menu-items.webp)
 
-- Enter `cm.gelighting.com` or `cm-ge.xlink.cn` in **Domain**.
+- Enter `cm.gelighting.com` / `cm-sec.gelighting.com` or `cm-ge.xlink.cn` in **Domain**.
 - Enter the IP of the machine that will be running cync-lan in **IP Address**. 
 - Click the *Add* button.
 ![Pi-hole Local DNS Records Interface](./assets/pi-hole-local-dns-interface.webp)
@@ -149,6 +151,7 @@ dig cm-ge.xlink.cn
 
 # Newer firmware
 dig cm.gelighting.com
+dig cm-sec.gelighting.com
 
 # Example output with a local A record returned
 ; <<>> DiG 9.18.24 <<>> cm.gelighting.com
