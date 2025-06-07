@@ -28,15 +28,15 @@ __all__ = [
     "CYNC_MQTT_PORT",
     "CYNC_MQTT_USER",
     "CYNC_MQTT_PASS",
-    "CYNC_DEVICE_CERT",
-    "CYNC_DEVICE_KEY",
+    "CYNC_SSL_CERT",
+    "CYNC_SSL_KEY",
     "CYNC_TOPIC",
     "CYNC_HASS_TOPIC",
     "CYNC_HASS_STATUS_TOPIC",
     "CYNC_HASS_BIRTH_MSG",
     "CYNC_HASS_WILL_MSG",
     "CYNC_PORT",
-    "CYNC_HOST",
+    "CYNC_SRV_HOST",
     "CYNC_CHUNK_SIZE",
     "YES_ANSWER",
     "CYNC_RAW",
@@ -54,13 +54,12 @@ __all__ = [
 YES_ANSWER = ("true", "1", "yes", "y", "t", 1)
 LOCAL_TZ = zoneinfo.ZoneInfo(str(tzlocal.get_localzone()))
 CYNC_LOG_NAME: str = "cync_lan"
-logger = logging.getLogger(CYNC_LOG_NAME)
 CYNC_VERSION: str = __version__
 SRC_REPO_URL: str = "https://github.com/baudneo/cync-lan"
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
 DEVICE_LWT_MSG: bytes = b"offline"
 
-CYNC_SRV_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
+CYNC_SRV_HOST = os.environ.get("CYNC_SRV_HOST", "0.0.0.0")
 CYNC_ACCOUNT_LANGUAGE: str = os.environ.get("CYNC_ACCOUNT_LANGUAGE", "en-us").casefold()
 CYNC_ACCOUNT_USERNAME: str = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
 CYNC_ACCOUNT_PASSWORD: str = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
@@ -80,13 +79,18 @@ CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
 CYNC_RAW = os.environ.get("CYNC_RAW_DEBUG", "0").casefold() in YES_ANSWER
 CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 
-CYNC_BASE_DIR: str = os.environ.get("CYNC_BASE_DIR" ,"/opt")
+# FIXME: change when done local testing
+# CYNC_BASE_DIR: str = "/root"
+CYNC_BASE_DIR: str = "/opt"
+# CYNC_STATIC_DIR: str = "/root/cync-lan/static"
+CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan/hass_add-on/cync-lan/static"
+
 CYNC_CONFIG_FILE_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/cync_mesh.yaml"
-CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/.cloud_auth.yaml"
-CYNC_UUID_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/uuid.txt"
+CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/.cloud_auth.yaml"
+CYNC_UUID_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/uuid.txt"
 CYNC_SSL_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
 CYNC_SSL_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
-CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan/hass_add-on/cync-lan/static"
+
 
 CYNC_PORT = 23779
 INGRESS_PORT = 23778
