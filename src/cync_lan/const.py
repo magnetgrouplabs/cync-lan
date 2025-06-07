@@ -82,7 +82,7 @@ CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 # FIXME: change when done local testing
 CYNC_BASE_DIR: str = "/root"
 # CYNC_BASE_DIR: str = "/opt"
-CYNC_STATIC_DIR: str = "/root/cync-lan/static"
+CYNC_STATIC_DIR: str = "/root/cync-lan/www"
 # CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan-addon/cync-lan/static"
 
 CYNC_CONFIG_FILE_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/cync_mesh.yaml"
