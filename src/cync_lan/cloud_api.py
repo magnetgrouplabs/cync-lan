@@ -141,6 +141,8 @@ class CyncCloudAPI:
         Request an OTP code for 2FA authentication.
         The username and password are defined in the hass_add-on 'configuration' page
         """
+        from cync_lan.const import CYNC_ACCOUNT_PASSWORD, CYNC_ACCOUNT_USERNAME
+
         lp = f"{self.lp}:request_otp:"
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
         if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
@@ -164,6 +166,7 @@ class CyncCloudAPI:
                 return True
 
     async def send_otp(self, otp_code: int) -> bool:
+        from cync_lan.const import CYNC_ACCOUNT_PASSWORD, CYNC_ACCOUNT_USERNAME
         lp = f"{self.lp}:send_otp:"
         if not otp_code:
             logger.error("OTP code must be provided")

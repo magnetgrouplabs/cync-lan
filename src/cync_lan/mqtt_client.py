@@ -1,8 +1,6 @@
 import asyncio
 import json
 import logging
-import os
-import signal
 import uuid
 from typing import Optional, Union, List, Coroutine
 
@@ -19,6 +17,7 @@ g: Optional[GlobalObject] = None
 class MQTTClient:
     lp: str = "mqtt:"
     _instance: Optional['MQTTClient'] = None
+    cync_topic: str
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -48,15 +47,16 @@ class MQTTClient:
         else:
             ha_topic = CYNC_HASS_TOPIC
 
-        self.broker_host = CYNC_MQTT_HOST
-        self.broker_port = CYNC_MQTT_PORT
-        self.broker_username = CYNC_MQTT_USER
-        self.broker_password = CYNC_MQTT_PASS
+
         self.broker_client_id = f"cync_lan_{uuid.uuid4()}"
         lwt = aiomqtt.Will(
             topic=f"{topic}/connected",
             payload=DEVICE_LWT_MSG
         )
+        self.broker_host = CYNC_MQTT_HOST
+        self.broker_port = CYNC_MQTT_PORT
+        self.broker_username = CYNC_MQTT_USER
+        self.broker_password = CYNC_MQTT_PASS
         self.client = aiomqtt.Client(
             hostname=self.broker_host,
             port=int(self.broker_port),
@@ -137,13 +137,33 @@ class MQTTClient:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
 
     async def connect(self) -> bool:
+        from cync_lan.const import (CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS,
+                                    CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC,
+                                    CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_HOST,
+                                    CYNC_DEVICE_CERT, CYNC_DEVICE_KEY, CYNC_BASE_DIR)
+
+
         lp = f"{self.lp}connect:"
-        try:
-            await self.client.__aexit__(None, None, None)
-        except aiomqtt.MqttError:
-            pass
         self._connected = False
         logger.debug(f"{lp} Connecting to MQTT broker...")
+        # update host, username and password
+        lwt = aiomqtt.Will(
+            topic=f"{self.topic}/connected",
+            payload=DEVICE_LWT_MSG
+        )
+        self.broker_host = CYNC_MQTT_HOST
+        self.broker_port = CYNC_MQTT_PORT
+        self.broker_username = CYNC_MQTT_USER
+        self.broker_password = CYNC_MQTT_PASS
+        self.client = aiomqtt.Client(
+            hostname=self.broker_host,
+            port=int(self.broker_port),
+            username=self.broker_username,
+            password=self.broker_password,
+            identifier=self.broker_client_id,
+            will=lwt,
+            # logger=logger,
+        )
         try:
             await self.client.__aenter__()
         except aiomqtt.MqttError as mqtt_err_exc:
@@ -511,7 +531,7 @@ class MQTTClient:
         if self._connected:
             logger.info(f"{lp} Starting device discovery...")
             try:
-                for device in g.server.devices.values():
+                for device in g.cync_lan_server.devices.values():
                     device_uuid = device.hass_id
                     # unique_id = device.mac.replace(":", "").casefold()
                     unique_id = f"{device.home_id}_{device.id}"

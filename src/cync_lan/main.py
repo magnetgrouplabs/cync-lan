@@ -12,6 +12,7 @@ import aiohttp
 import uvloop
 
 from cync_lan.const import *
+from cync_lan.const import _re_eval_env_vars
 from cync_lan.structs import GlobalObject
 from cync_lan.server import CyncLanServer
 from cync_lan.mqtt_client import MQTTClient
@@ -207,6 +208,7 @@ def parse_cli():
         else:
             if loaded_any:
                 logger.info(f"Environment variables loaded from {env_path}")
+                _re_eval_env_vars()
             else:
                 logger.warning(f"No environment variables were loaded from {env_path}")
 

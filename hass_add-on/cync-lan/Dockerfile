@@ -10,7 +10,6 @@ RUN set -x \
     && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
         openssl git build-essential cmake \
     && pip install --no-cache-dir -U pip \
-    && pip install --no-cache-dir  setuptools wheel \
     && pip install --no-cache-dir "github+https://github.com/baudneo/cync-lan/tree/hass_addon" \
     && DEBIAN_FRONTEND=noninteractive apt-get remove -yq git build-essential cmake \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
