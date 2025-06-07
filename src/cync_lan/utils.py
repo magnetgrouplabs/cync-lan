@@ -1,9 +1,13 @@
+from __future__ import annotations
+
+import hashlib
 import logging
 import struct
+from pathlib import Path
 from typing import Optional, List, Tuple
 
 from cync_lan.const import *
-
+from cync_lan.server import logger
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
@@ -75,3 +79,31 @@ def parse_unbound_firmware_version(
         )
 
     return firmware_type, firmware_version_int, firmware_str
+
+
+def md5sum(filepath: Path):
+    """Calculates the MD5 checksum of a file.
+
+    Args:
+        filepath (pathlib.Path): The path to the file.
+
+    Returns:
+        str: The hexadecimal representation of the MD5 checksum.
+             Returns None if the file cannot be opened.
+    """
+    lp = "CyncLAN:md5sum:"
+    try:
+        with filepath.open('rb') as f:
+            m = hashlib.md5()
+            while True:
+                data = f.read(4096)  # Read in chunks to handle large files
+                if not data:
+                    break
+                m.update(data)
+            return m.hexdigest()
+    except FileNotFoundError:
+        logger.warning(f"{lp} File not found at {filepath.expanduser().resolve().as_posix()}")
+        return None
+    except Exception as e:
+        logger.exception(f"{lp} An error occurred: {e}")
+        return None

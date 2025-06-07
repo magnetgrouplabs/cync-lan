@@ -89,13 +89,13 @@ class ExportServer:
     def __init__(self):
         self.app = app
         self.uvi_server = uvicorn.Server(
-            config=uvicorn.Config(app, host=CYNC_HOST, port=INGRESS_PORT, log_level="info")
+            config=uvicorn.Config(app, host=CYNC_SRV_HOST, port=INGRESS_PORT, log_level="info")
         )
 
     async def start(self):
         """Start the FastAPI server."""
         lp = f"{self.lp}start:"
-        logger.info(f"{lp} Starting FastAPI export server on {CYNC_HOST}:{INGRESS_PORT}")
+        logger.info(f"{lp} Starting FastAPI export server on {CYNC_SRV_HOST}:{INGRESS_PORT}")
         await self.uvi_server.serve()
 
     async def stop(self):

@@ -107,7 +107,7 @@ class MQTTClient:
                             )
                         if tasks:
                             await asyncio.gather(*tasks)
-                    logger.debug(f"{lp} Starting MQTT listener...")
+                    logger.debug(f"{lp} Starting MQTT receiver...")
                     lp: str = f"{self.lp}rcv:"
                     topics = [
                         (f"{self.topic}/set/#", 0),
@@ -117,7 +117,7 @@ class MQTTClient:
                     logger.debug(f"{lp} Subscribed to MQTT topics: {[x[0] for x in topics]}. "
                                  f"Waiting for MQTT messages...")
                     try:
-                        await self.start_listening()
+                        await self.start_receiver_task()
                     except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as msg_err:
                         logger.warning(f"{lp} MQTT error: {msg_err}")
                         continue
@@ -180,7 +180,7 @@ class MQTTClient:
             return True
         return False
 
-    async def start_listening(self):
+    async def start_receiver_task(self):
         """Start listening for MQTT messages on subscribed topics"""
         lp = f"{self.lp}rcv:"
         async for message in self.client.messages:

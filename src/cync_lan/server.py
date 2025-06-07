@@ -1,55 +1,23 @@
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import asyncio
 import signal
 import ssl
-from pathlib import Path
 from typing import Dict, Optional, Union, List, TYPE_CHECKING
 
 import uvloop
 
 from cync_lan.const import *
 from cync_lan.devices import CyncDevice, CyncTCPDevice
-
-if TYPE_CHECKING:
-    from cync_lan.structs import GlobalObject, DeviceStatus
+from cync_lan.structs import GlobalObject, DeviceStatus
 
 __all__ = [
     "CyncLanServer",
 ]
 logger = logging.getLogger(CYNC_LOG_NAME)
-g: Optional[GlobalObject] = None
-
-
-def md5sum(filepath: Path):
-    """Calculates the MD5 checksum of a file.
-
-    Args:
-        filepath (pathlib.Path): The path to the file.
-
-    Returns:
-        str: The hexadecimal representation of the MD5 checksum.
-             Returns None if the file cannot be opened.
-    """
-    lp = "CyncLAN:md5sum:"
-    try:
-        with filepath.open('rb') as f:
-            m = hashlib.md5()
-            while True:
-                data = f.read(4096)  # Read in chunks to handle large files
-                if not data:
-                    break
-                m.update(data)
-            return m.hexdigest()
-    except FileNotFoundError:
-        logger.warning(f"{lp} File not found at {filepath.expanduser().resolve().as_posix()}")
-        return None
-    except Exception as e:
-        logger.exception(f"{lp} An error occurred: {e}")
-        return None
+g = GlobalObject()
 
 
 class CyncLanServer:
@@ -76,63 +44,16 @@ class CyncLanServer:
         return cls._instance
 
     def __init__(self):
-        global g
-        if g is None:
-            from cync_lan.main import GlobalObject
-            g = GlobalObject()
-
-        self.mesh_info_loop_task: Optional[asyncio.Task] = None
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
-        self.mesh_loop_started: bool = False
-        self.host = CYNC_HOST
+        self.host = CYNC_SRV_HOST
         self.port = CYNC_PORT
-        self.cert_file = CYNC_DEVICE_CERT
-        self.key_file = CYNC_DEVICE_KEY
+        self.cert_file = CYNC_SSL_CERT
+        self.key_file = CYNC_SSL_KEY
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
-        self.known_ids: List[Optional[int]] = []
-        g.cync_lan_server = self
-
-    async def close_tcp_device(self, device: CyncTCPDevice):
-        """Gracefully close TCP device; async task and reader/writer"""
-        # check if the receive task is running or in done/exception state.
-        lp_id = f"[{device.id}]" if device.id is not None else ""
-        lp = f"{self.lp}remove_tcp_device:{device.address}{lp_id}:"
-        dev_id = id(device)
-        logger.debug(f"{lp} Closing TCP device: {dev_id}")
-        if (_r_task := device.tasks.receive) is not None:
-            if _r_task.done():
-                logger.debug(
-                    f"{lp} existing receive task ({_r_task.get_name()}) is done, no need to cancel..."
-                )
-            else:
-                logger.debug(
-                    f"{lp} existing receive task is running (name: {_r_task.get_name()}), cancelling..."
-                )
-                await asyncio.sleep(1)
-                _r_task.cancel("Gracefully closing TCP device")
-                await asyncio.sleep(0)
-                if _r_task.cancelled():
-                    logger.debug(
-                        f"{lp} existing receive task was cancelled successfully"
-                    )
-                else:
-                    logger.warning(f"{lp} existing receive task was not cancelled!")
-        else:
-            logger.debug(f"{lp} no existing receive task found!")
-
-        # existing reader is closed, no sense in feeding it EOF, just remove it
-        device.reader = None
-        # Go through the motions to gracefully close the writer
-        try:
-            device.writer.close()
-            await device.writer.wait_closed()
-        except Exception as writer_close_exc:
-            logger.error(f"{lp} Error closing writer: {writer_close_exc}")
-        device.writer = None
-        logger.debug(f"{lp} Removed TCP device from server")
+        self.known_device_ids: List[Optional[int]] = []
 
     async def create_ssl_context(self):
         # Allow the server to use a self-signed certificate
@@ -245,7 +166,7 @@ class CyncLanServer:
             os.kill(os.getpid(), signal.SIGTERM)
         else:
             logger.info(
-                f"{self.lp} Started (ver. {CYNC_VERSION}) [md5sum: '{md5sum(Path(__file__))}'], bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f"{self.lp}  bound to {self.host}:{self.port} - Waiting for connections, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
             try:

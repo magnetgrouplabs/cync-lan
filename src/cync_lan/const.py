@@ -60,7 +60,7 @@ SRC_REPO_URL: str = "https://github.com/baudneo/cync-lan"
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"
 DEVICE_LWT_MSG: bytes = b"offline"
 
-CYNC_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
+CYNC_SRV_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
 CYNC_ACCOUNT_LANGUAGE: str = os.environ.get("CYNC_ACCOUNT_LANGUAGE", "en-us").casefold()
 CYNC_ACCOUNT_USERNAME: str = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
 CYNC_ACCOUNT_PASSWORD: str = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
@@ -84,8 +84,8 @@ CYNC_BASE_DIR: str = os.environ.get("CYNC_BASE_DIR" ,"/opt")
 CYNC_CONFIG_FILE_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/cync_mesh.yaml"
 CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/.cloud_auth.yaml"
 CYNC_UUID_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/var/uuid.txt"
-CYNC_DEVICE_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
-CYNC_DEVICE_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
+CYNC_SSL_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
+CYNC_SSL_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
 CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan/hass_add-on/cync-lan/static"
 
 CYNC_PORT = 23779
@@ -114,33 +114,3 @@ FACTORY_EFFECTS_BYTES: Dict[str, Tuple[int, int]] = {
             "vegas": (int(0x08), int(0xE3)),
             "party_time": (int(0x09), int(0x06)),
         }
-
-def _re_eval_env_vars():
-    """Re-evaluate environment variables to update constants."""
-    global CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS
-    global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC
-    global CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_HOST
-    global CYNC_DEVICE_CERT, CYNC_DEVICE_KEY, CYNC_BASE_DIR, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD
-
-    # logger.debug(f"Re-evaluating environment variables for Cync LAN constants")
-    # logger.debug(f"BEFORE>>>     {CYNC_MQTT_USER=} // {CYNC_MQTT_PASS=} // {CYNC_MQTT_HOST=} // {CYNC_MQTT_PORT=}")
-    # log the os.environ CYNC_MQTT_HOST, CYNC_MQTT_USER, CYNC_MQTT_PASS
-    # logger.debug(f"Environment variables: CYNC_MQTT_HOST: {os.environ.get('CYNC_MQTT_HOST')} //  CYNC_MQTT_USER: {os.environ.get('CYNC_MQTT_USER')} // CYNC_MQTT_PASS: {os.environ.get('CYNC_MQTT_PASS')}")
-
-    CYNC_ACCOUNT_USERNAME = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
-    CYNC_ACCOUNT_PASSWORD = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
-    CYNC_BASE_DIR = os.environ.get("CYNC_BASE_DIR" ,"/opt")
-    CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
-    CYNC_MQTT_PORT = int(os.environ.get("CYNC_MQTT_PORT", 1883))
-    CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
-    CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
-    CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan_NEW")
-    CYNC_HASS_TOPIC = os.environ.get("CYNC_HASS_TOPIC", "homeassistant")
-    CYNC_HASS_STATUS_TOPIC = os.environ.get("CYNC_HASS_STATUS_TOPIC", "status")
-    CYNC_HASS_BIRTH_MSG = os.environ.get("CYNC_HASS_BIRTH_MSG", "online")
-    CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
-    CYNC_HOST = os.environ.get("CYNC_HOST", "0.0.0.0")
-
-    CYNC_DEVICE_CERT = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
-    CYNC_DEVICE_KEY = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
-    logger.debug(f"AFTER>>>     {CYNC_MQTT_USER=} // {CYNC_MQTT_PASS=} // {CYNC_MQTT_HOST=} // {CYNC_MQTT_PORT=}")

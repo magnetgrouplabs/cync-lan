@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
 import aiohttp
 import uvloop
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
 from cync_lan.const import *
@@ -19,12 +20,33 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
+class GlobalObjEnv(BaseModel):
+    """
+    Environment variables for the global object.
+    This is used to store environment variables that are used throughout the application.
+    """
+    account_username: Optional[str] = None
+    account_password: Optional[str] = None
+    mqtt_host: Optional[str] = None
+    mqtt_port: Optional[int] = None
+    mqtt_user: Optional[str] = None
+    mqtt_pass: Optional[str] = None
+    mqtt_topic: Optional[str] = None
+    mqtt_hass_topic: Optional[str] = None
+    mqtt_hass_status_topic: Optional[str] = None
+    mqtt_hass_birth_msg: Optional[str] = None
+    mqtt_hass_will_msg: Optional[str] = None
+    cync_srv_host: Optional[str] = None
+    cync_srv_ssl_cert: Optional[str] = None
+    cync_srv_ssl_key: Optional[str] = None
+
 class GlobalObject:
     cync_lan_server: Optional[CyncLanServer] = None
     mqtt_client: Optional[MQTTClient] = None
     http_session: Optional[aiohttp.ClientSession] = None
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
     export_server: Optional[ExportServer] = None
+    env: GlobalObjEnv = Field(default_factory=GlobalObjEnv)
 
     _instance: Optional['GlobalObject'] = None
 
@@ -32,6 +54,28 @@ class GlobalObject:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
+
+    def reload_env(self):
+        """Re-evaluate environment variables to update constants."""
+        global CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS
+        global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC
+        global CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_SRV_HOST
+        global CYNC_SSL_CERT, CYNC_SSL_KEY, CYNC_BASE_DIR, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD
+
+        self.env.account_username = CYNC_ACCOUNT_USERNAME = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
+        self.env.account_password = CYNC_ACCOUNT_PASSWORD = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
+        self.env.mqtt_host = CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
+        self.env.mqtt_port = CYNC_MQTT_PORT = int(os.environ.get("CYNC_MQTT_PORT", 1883))
+        self.env.mqtt_user = CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
+        self.env.mqtt_pass = CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
+        self.env.mqtt_topic = CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan_NEW")
+        self.env.mqtt_hass_topic = CYNC_HASS_TOPIC = os.environ.get("CYNC_HASS_TOPIC", "homeassistant")
+        self.env.mqtt_hass_status_topic = CYNC_HASS_STATUS_TOPIC = os.environ.get("CYNC_HASS_STATUS_TOPIC", "status")
+        self.env.mqtt_hass_birth_msg = CYNC_HASS_BIRTH_MSG = os.environ.get("CYNC_HASS_BIRTH_MSG", "online")
+        self.env.mqtt_hass_will_msg = CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
+        self.env.cync_srv_host = CYNC_SRV_HOST = os.environ.get("CYNC_SRV_HOST", "0.0.0.0")
+        self.env.cync_srv_ssl_cert = CYNC_SSL_CERT = os.environ.get("CYNC_SSL_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
+        self.env.cync_srv_ssl_key = CYNC_SSL_KEY = os.environ.get("CYNC_SSL_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
