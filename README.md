@@ -24,7 +24,7 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 - Cync account with devices added
 - MQTT broker (I recommend EMQX)
 - [Export devices](./docs/command_line_sub_commands.md#export) from the Cync cloud to a YAML file; first export requires account email, password and an OTP emailed to you
-- [DNS override/redirection](./docs/DNS.md) for `cm.gelighting.com` or `cm-ge.xlink.cn` to a local host that will run `cync-lan`
+- [DNS override/redirection](./docs/DNS.md) for `cm.gelighting.com`, `cm-sec.gelighting.com` or `cm-ge.xlink.cn` to a local host that will run `cync-lan`
 - **Non Docker:** [Create self-signed SSL certs](./docs/install.md#setup) using `CN=*.xlink.cn` for the server. You can use the `create_certs.sh` script
 - **Optional:** *[Firewall](#firewall) rules to allow cync devices to talk to `cync-lan`* **(VLANs?)**
 
