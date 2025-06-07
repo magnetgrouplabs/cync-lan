@@ -8,6 +8,7 @@ from cync_lan import __version__
 
 
 __all__ = [
+    "CYNC_BASE_DIR",
     "CYNC_STATIC_DIR",
     "INGRESS_PORT",
     "CYNC_UUID_PATH",
@@ -82,7 +83,7 @@ CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 # CYNC_BASE_DIR: str = "/root"
 CYNC_BASE_DIR: str = "/opt"
 # CYNC_STATIC_DIR: str = "/root/cync-lan/static"
-CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan/hass_add-on/cync-lan/static"
+CYNC_STATIC_DIR: str = "~/PycharmProjects/cync-lan-addon/cync-lan/static"
 
 CYNC_CONFIG_FILE_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/cync_mesh.yaml"
 CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/config/.cloud_auth.yaml"

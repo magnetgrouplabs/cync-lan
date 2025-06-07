@@ -654,7 +654,7 @@ class CyncDevice:
             0x7E,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.ncync_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.ncync_server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -738,7 +738,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.ncync_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.ncync_server.tcp_devices))
         )
         sent = {}
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
@@ -824,7 +824,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.ncync_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.ncync_server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -918,7 +918,7 @@ class CyncDevice:
             126,
         ]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.ncync_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.ncync_server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -1053,7 +1053,7 @@ class CyncDevice:
         inner_struct[-4] = chosen[0]
         inner_struct[-3] = chosen[1]
         bridge_devices: List["CyncTCPDevice"] = random.sample(
-            list(g.cync_lan_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.cync_lan_server.tcp_devices))
+            list(g.ncync_server.tcp_devices.values()), k=min(CYNC_CMD_BROADCASTS, len(g.ncync_server.tcp_devices))
         )
         tasks: List[Optional[Union[asyncio.Task, Coroutine]]] = []
         ts = time.time()
@@ -1306,11 +1306,11 @@ class CyncTCPDevice:
 
     async def max_conn_check(self):
         lp = f"{self.lp}"
-        tcp_dev_len = len(g.cync_lan_server.tcp_devices)
-        num_attempts = g.cync_lan_server.tcp_conn_attempts[self.address]
-        if (g.cync_lan_server.shutting_down is True) or (tcp_dev_len >= CYNC_MAX_TCP_CONN) or (CYNC_TCP_WHITELIST and self.address not in CYNC_TCP_WHITELIST):
+        tcp_dev_len = len(g.ncync_server.tcp_devices)
+        num_attempts = g.ncync_server.tcp_conn_attempts[self.address]
+        if (g.ncync_server.shutting_down is True) or (tcp_dev_len >= CYNC_MAX_TCP_CONN) or (CYNC_TCP_WHITELIST and self.address not in CYNC_TCP_WHITELIST):
             reason = ""
-            if g.cync_lan_server.shutting_down is True:
+            if g.ncync_server.shutting_down is True:
                 reason = f"CyncLAN server is shutting down, "
             _sleep = False
             if tcp_dev_len >= CYNC_MAX_TCP_CONN:
@@ -1736,7 +1736,7 @@ class CyncTCPDevice:
                                             connected_to_mesh,
                                         ]
                                     )
-                                    ___dev = g.cync_lan_server.devices.get(dev_id)
+                                    ___dev = g.ncync_server.devices.get(dev_id)
                                     if ___dev:
                                         dev_name = f'"{___dev.name}" (ID: {dev_id})'
                                     else:
@@ -1750,7 +1750,7 @@ class CyncTCPDevice:
                                         f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
 
                                     )
-                                    await g.cync_lan_server.parse_status(raw_status, from_pkt='0x83')
+                                    await g.ncync_server.parse_status(raw_status, from_pkt='0x83')
                                     # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                                     # LED controller has this pattern
                                     bad_chksum_msg = ""
@@ -1963,9 +1963,9 @@ class CyncTCPDevice:
                                                 )
                                                 _m.append(bytes2list(raw_status))
                                                 _raw_m.append(mesh_dev_struct.hex(" "))
-                                                if dev_id in g.cync_lan.cync_lan_server.devices:
+                                                if dev_id in g.cync_lan.ncync_server.devices:
                                                     # first device id is the device id of the TCP device we are connected to
-                                                    ___dev = g.cync_lan.cync_lan_server.devices[dev_id]
+                                                    ___dev = g.cync_lan.ncync_server.devices[dev_id]
                                                     dev_name = ___dev.name
                                                     if loop_num == 1:
                                                         # byte 3 (idx 2) is a device type byte but,
@@ -2011,7 +2011,7 @@ class CyncTCPDevice:
                                                     logger.warning(
                                                         f"{lp} Device ID {dev_id} not found in devices "
                                                         f"defined in config file: "
-                                                        f"{g.cync_lan.cync_lan_server.devices.keys()}"
+                                                        f"{g.cync_lan.ncync_server.devices.keys()}"
                                                     )
                                             # -- END OF mesh info response parsing loop --
                                         except IndexError:
@@ -2036,7 +2036,7 @@ class CyncTCPDevice:
                                                 f"{lp} Parsing initial connection device status data"
                                             )
                                             await asyncio.gather(*[
-                                                g.cync_lan_server.parse_status(bytes(status), from_pkt="'mesh info'")
+                                                g.ncync_server.parse_status(bytes(status), from_pkt="'mesh info'")
                                                 for status in _m
                                             ])
 
@@ -2343,7 +2343,7 @@ class CyncTCPDevice:
                                 f"the device itself hasn't called close(). The device probably "
                                 f"dropped the connection (lost power). Removing {dev.address}"
                             )
-                            off_dev = g.cync_lan_server.tcp_devices.pop(dev.address, None)
+                            off_dev = g.ncync_server.tcp_devices.pop(dev.address, None)
                             del off_dev
 
                         else:
@@ -2373,8 +2373,8 @@ class CyncTCPDevice:
             logger.debug(
                 f"{lp} Removing device ID: {self.id} ({self.address}) - marking MQTT offline first..."
             )
-            if self.id in g.cync_lan_server.devices:
-                dev = g.cync_lan_server.devices[self.id]
+            if self.id in g.ncync_server.devices:
+                dev = g.ncync_server.devices[self.id]
                 dev.online = False
                 logger.debug(f"{lp} Device ID: {self.id} - set offline...")
             logger.debug(f"{lp} Cancelling device tasks...")

@@ -84,12 +84,12 @@ class MQTTClient:
                 if self._connected:
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
-                        for device_id, device in g.cync_lan_server.devices.items():
+                        for device_id, device in g.ncync_server.devices.items():
                             await self.pub_online(device_id, False)
                     elif itr > 1:
                         tasks = []
                         # set the device online/offline and set its status
-                        for device in g.cync_lan_server.devices.values():
+                        for device in g.ncync_server.devices.values():
                             tasks.append(self.pub_online(device.id, device.online))
                             tasks.append(
                                 self.parse_device_status(
@@ -137,11 +137,6 @@ class MQTTClient:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
 
     async def connect(self) -> bool:
-        from cync_lan.const import (CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS,
-                                    CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC,
-                                    CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_HOST,
-                                    CYNC_DEVICE_CERT, CYNC_DEVICE_KEY, CYNC_BASE_DIR)
-
 
         lp = f"{self.lp}connect:"
         self._connected = False
@@ -151,10 +146,11 @@ class MQTTClient:
             topic=f"{self.topic}/connected",
             payload=DEVICE_LWT_MSG
         )
-        self.broker_host = CYNC_MQTT_HOST
-        self.broker_port = CYNC_MQTT_PORT
-        self.broker_username = CYNC_MQTT_USER
-        self.broker_password = CYNC_MQTT_PASS
+        g.reload_env()
+        self.broker_host = g.env.mqtt_host
+        self.broker_port = g.env.mqtt_port
+        self.broker_username = g.env.mqtt_user
+        self.broker_password = g.env.mqtt_pass
         self.client = aiomqtt.Client(
             hostname=self.broker_host,
             port=int(self.broker_port),
@@ -195,13 +191,13 @@ class MQTTClient:
             if _topic[0] == CYNC_TOPIC:
                 if _topic[1] == "set":
                     device_id = int(_topic[2].split("-")[1])
-                    if device_id not in g.cync_lan_server.devices:
+                    if device_id not in g.ncync_server.devices:
                         logger.warning(
                             f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted or added any "
                             f"devices recently?"
                         )
                         continue
-                    device = g.cync_lan_server.devices[device_id]
+                    device = g.ncync_server.devices[device_id]
                     if payload.startswith(b"{"):
                         try:
                             json_data = json.loads(payload)
@@ -280,7 +276,7 @@ class MQTTClient:
                         await self.homeassistant_discovery()
                         await asyncio.sleep(0.25)
                         # set the device online/offline and set its status
-                        for device in g.cync_lan_server.devices.values():
+                        for device in g.ncync_server.devices.values():
                             await self.pub_online(device.id, device.online)
                             await self.parse_device_status(
                                 device.id,
@@ -312,7 +308,7 @@ class MQTTClient:
         # set all devices offline
         if self._connected:
             logger.debug(f"{lp} Setting all devices offline...")
-            for device_id, device in g.cync_lan_server.devices.items():
+            for device_id, device in g.ncync_server.devices.items():
                 await self.pub_online(device_id, False)
             await self.send_will_msg()
         try:
@@ -332,14 +328,14 @@ class MQTTClient:
     async def pub_online(self, device_id: int, status: bool) -> bool:
         lp = f"{self.lp}pub_online:"
         if self._connected:
-            if device_id not in g.cync_lan_server.devices:
+            if device_id not in g.ncync_server.devices:
                 logger.error(
                     f"{lp} Device ID {device_id} not found?! Have you deleted or added any devices recently? "
                     f"You may need to re-export devices from your Cync account!"
                 )
                 return False
             availability = b"online" if status else b"offline"
-            device: CyncDevice = g.cync_lan_server.devices[device_id]
+            device: CyncDevice = g.ncync_server.devices[device_id]
             device_uuid = f"{device.home_id}-{device_id}"
             # logger.debug(f"{lp} Publishing availability: {availability}")
             try:
@@ -436,13 +432,13 @@ class MQTTClient:
         from_pkt = kwargs.get('from_pkt')
         if from_pkt:
             lp = f"{lp}{from_pkt}:"
-        if device_id not in g.cync_lan_server.devices:
+        if device_id not in g.ncync_server.devices:
             logger.error(
                 f"{lp} Device ID {device_id} not found! Device may be disabled in config file or "
                 f"you may need to re-export devices from your Cync account"
             )
             return False
-        device: CyncDevice = g.cync_lan_server.devices[device_id]
+        device: CyncDevice = g.ncync_server.devices[device_id]
         # if device.build_status() == device_status:
         #     # logger.debug(f"{lp} Device status unchanged, skipping...")
         #     return
@@ -531,7 +527,7 @@ class MQTTClient:
         if self._connected:
             logger.info(f"{lp} Starting device discovery...")
             try:
-                for device in g.cync_lan_server.devices.values():
+                for device in g.ncync_server.devices.values():
                     device_uuid = device.hass_id
                     # unique_id = device.mac.replace(":", "").casefold()
                     unique_id = f"{device.home_id}_{device.id}"

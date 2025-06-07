@@ -1,1 +1,1 @@
-from model_info import device_type_map
+from cync_lan.metadata.model_info import device_type_map

@@ -13,7 +13,7 @@ import uvloop
 
 from cync_lan.const import *
 from cync_lan.structs import GlobalObject
-from cync_lan.server import CyncLanServer
+from cync_lan.server import nCyncServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.exporter import ExportServer
 
@@ -28,7 +28,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-g: Optional["GlobalObject"] = None
+g = GlobalObject()
 cync: Optional["CyncLAN"] = None
 SHUTTING_DOWN: bool = False
 global_tasks = []
@@ -48,8 +48,8 @@ def signal_handler(signum) -> None:
             # we call stop() on the services directly, and cancel the self.start() tasks
             # cruicial to stop the MQTT connection retry loop
             tasks = []
-            if g.cync_lan_server:
-                tasks.append(g.cync_lan_server.stop())
+            if g.ncync_server:
+                tasks.append(g.ncync_server.stop())
             if g.mqtt_client:
                 tasks.append(g.mqtt_client.stop())
             if g.http_session:
@@ -67,20 +67,16 @@ def signal_handler(signum) -> None:
             global_tasks.clear()
 
 
-
 class CyncLAN:
     lp: str = "CyncLAN:"
-    def __init__(self):
-        global g
 
-        if g is None:
-            logger.debug("main: Initializing GlobalObject")
-            g = GlobalObject()
+    def __init__(self):
+        lp = f"{self.lp}init:"
         self._is_first_run()
         # create an aiohttp session to be used for Cloud API calls
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         g.loop = asyncio.get_event_loop()
-        logger.debug("main: Setting up event loop signal handlers")
+        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, setting up event loop signal handlers...")
         g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
         g.loop.add_signal_handler(signal.SIGTERM, partial(signal_handler, signal.SIGTERM))
 
@@ -125,11 +121,11 @@ class CyncLAN:
 
         lp = f"{self.lp}start:"
         g.http_session = aiohttp.ClientSession()
-        g.cync_lan_server = CyncLanServer()
+        g.ncync_server = nCyncServer()
         g.export_server = ExportServer()
         g.mqtt_client = MQTTClient()
 
-        global_tasks.append(asyncio.Task(g.cync_lan_server.start(), name="CyncLanServer_START"))
+        global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         global_tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         global_tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
         try:
@@ -147,8 +143,8 @@ class CyncLAN:
 
         lp = f"{self.lp}stop:"
         tasks = []
-        if g.cync_lan_server:
-            tasks.append(asyncio.Task(g.cync_lan_server.stop(), name="CyncLanServer_STOP"))
+        if g.ncync_server:
+            tasks.append(asyncio.Task(g.ncync_server.stop(), name="CyncLanServer_STOP"))
         if g.export_server:
             tasks.append(asyncio.Task(g.export_server.stop(), name="ExportServer_STOP"))
         if g.mqtt_client:

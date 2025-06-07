@@ -14,16 +14,16 @@ from cync_lan.devices import CyncDevice, CyncTCPDevice
 from cync_lan.structs import GlobalObject, DeviceStatus
 
 __all__ = [
-    "CyncLanServer",
+    "nCyncServer",
 ]
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
 
 
-class CyncLanServer:
+class nCyncServer:
     """
-    A class to represent a Cync LAN server that listens for connections from Cync WiFi devices.
-    The WiFi devices can proxy messages to BlueTooth devices. The WiFi devices act as hubs for the BlueTooth mesh.
+    A class to represent a Cync LAN server that listens for connections from Cync Wi-Fi devices.
+    The Wi-Fi devices translate messages, status updates and commands to/from the Cync BTLE mesh.
     """
 
     devices: Dict[int, CyncDevice] = {}
@@ -35,8 +35,8 @@ class CyncLanServer:
     key_file: Optional[str] = None
     loop: Union[asyncio.AbstractEventLoop, uvloop.Loop]
     _server: Optional[asyncio.Server] = None
-    lp: str = "CyncServer:"
-    _instance: Optional['CyncLanServer'] = None
+    lp: str = "nCyncServer:"
+    _instance: Optional['nCyncServer'] = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -48,8 +48,9 @@ class CyncLanServer:
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.host = CYNC_SRV_HOST
         self.port = CYNC_PORT
-        self.cert_file = CYNC_SSL_CERT
-        self.key_file = CYNC_SSL_KEY
+        g.reload_env()
+        self.cert_file = g.env.cync_srv_ssl_cert
+        self.key_file = g.env.cync_srv_ssl_key
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
@@ -85,7 +86,7 @@ class CyncLanServer:
     async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None):
         """Extracted status packet parsing, handles mqtt publishing and device state changes."""
         _id = raw_state[0]
-        device = g.cync_lan_server.devices.get(_id)
+        device = g.ncync_server.devices.get(_id)
         if device is None:
             logger.warning(
                 f"Device ID: {_id} not found in devices! device may be disabled in config file or you need to "
@@ -147,11 +148,12 @@ class CyncLanServer:
                 device.red = r
                 device.green = _g
                 device.blue = b
-            g.cync_lan_server.devices[device.id] = device
+            g.ncync_server.devices[device.id] = device
 
 
     async def start(self):
-        logger.debug("%s Starting, creating SSL context..." % self.lp)
+        lp = f"{self.lp}start:"
+        logger.debug(f"{lp} Starting, creating SSL context...")
         try:
             self.ssl_context = await self.create_ssl_context()
             self._server = await asyncio.start_server(
@@ -162,11 +164,10 @@ class CyncLanServer:
             )
 
         except Exception as e:
-            logger.error(f"{self.lp} Failed to start server: {e}", exc_info=True)
-            os.kill(os.getpid(), signal.SIGTERM)
+            logger.exception("%s Failed to start server: %s" % (lp, e))
         else:
             logger.info(
-                f"{self.lp}  bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f"{lp} bound to {self.host}:{self.port} - Waiting for connections, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
             try:
@@ -175,9 +176,7 @@ class CyncLanServer:
             except asyncio.CancelledError as ce:
                 pass
             except Exception as e:
-                logger.error("%s Server Exception: %s" % (self.lp, e), exc_info=True)
-
-            # logger.info(f"{self.lp} end of start()")
+                logger.exception("%s Server Exception: %s" % (self.lp, e))
 
     async def stop(self):
         self.shutting_down = True
@@ -189,7 +188,7 @@ class CyncLanServer:
                 try:
                     await device.close()
                 except Exception as e:
-                    logger.error("%s Error closing Cync Wi-Fi device connection: %s" % (lp, e), exc_info=True)
+                    logger.exception("%s Error closing Cync Wi-Fi device connection: %s" % (lp, e))
                 else:
                     logger.debug(f"{lp} Cync Wi-Fi device connection closed")
         else:
@@ -197,12 +196,12 @@ class CyncLanServer:
 
         if self._server:
             if self._server.is_serving():
-                logger.debug("%s currently running, shutting down NOW..." % lp)
+                logger.debug(f"{lp} shutting down NOW...")
                 self._server.close()
                 await self._server.wait_closed()
-                logger.debug("%s shut down!" % lp)
+                logger.debug(f"{lp} shut down!")
             else:
-                logger.debug("%s not running!" % lp)
+                logger.debug(f"{lp} not running!")
 
     async def _register_new_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -219,7 +218,6 @@ class CyncLanServer:
             logger.debug(
                 f"{lp} Existing device found ({existing_device_id}), gracefully killing..."
             )
-            # TODO: investigate if we need to close/cancel tasks or connections
             del existing_device
         new_device = CyncTCPDevice(reader, writer, client_addr)
         add_device = await new_device.max_conn_check()

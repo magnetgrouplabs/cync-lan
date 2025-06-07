@@ -8,7 +8,7 @@ from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
 import aiohttp
 import uvloop
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from pydantic.dataclasses import dataclass
 
 from cync_lan.const import *
@@ -16,7 +16,7 @@ from cync_lan.const import *
 if TYPE_CHECKING:
     from cync_lan.exporter import ExportServer
     from cync_lan.mqtt_client import MQTTClient
-    from cync_lan.server import CyncLanServer
+    from cync_lan.server import nCyncServer
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
@@ -41,12 +41,12 @@ class GlobalObjEnv(BaseModel):
     cync_srv_ssl_key: Optional[str] = None
 
 class GlobalObject:
-    cync_lan_server: Optional[CyncLanServer] = None
+    ncync_server: Optional[nCyncServer] = None
     mqtt_client: Optional[MQTTClient] = None
     http_session: Optional[aiohttp.ClientSession] = None
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
     export_server: Optional[ExportServer] = None
-    env: GlobalObjEnv = Field(default_factory=GlobalObjEnv)
+    env: GlobalObjEnv = GlobalObjEnv()
 
     _instance: Optional['GlobalObject'] = None
 
@@ -60,7 +60,7 @@ class GlobalObject:
         global CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS
         global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC
         global CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_SRV_HOST
-        global CYNC_SSL_CERT, CYNC_SSL_KEY, CYNC_BASE_DIR, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD
+        global CYNC_SSL_CERT, CYNC_SSL_KEY, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD
 
         self.env.account_username = CYNC_ACCOUNT_USERNAME = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
         self.env.account_password = CYNC_ACCOUNT_PASSWORD = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
