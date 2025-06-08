@@ -6,16 +6,16 @@ import sys
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import aiohttp
 import uvloop
 
 from cync_lan.const import *
-from cync_lan.structs import GlobalObject
-from cync_lan.server import nCyncServer
-from cync_lan.mqtt_client import MQTTClient
 from cync_lan.exporter import ExportServer
+from cync_lan.mqtt_client import MQTTClient
+from cync_lan.server import nCyncServer
+from cync_lan.structs import GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 formatter = logging.Formatter(
@@ -23,10 +23,10 @@ formatter = logging.Formatter(
     "%m/%d/%y %H:%M:%S",
 )
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
+handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 g = GlobalObject()
 cync: Optional["CyncLAN"] = None
@@ -46,7 +46,7 @@ def signal_handler(signum) -> None:
         if g:
             # instead of calling self.close(), which would add the close tasks to global_tasks
             # we call stop() on the services directly, and cancel the self.start() tasks
-            # cruicial to stop the MQTT connection retry loop
+            # crucial to stop the MQTT connection retry loop
             tasks = []
             if g.ncync_server:
                 tasks.append(g.ncync_server.stop())
