@@ -45,18 +45,18 @@ async def get_index():
 async def start_export():
     ret_msg = "Export started successfully"
     try:
-        # check token, if it returns true, the access token is valid
-        # if false, we need to request an OTP from Cync Cloud API
         succ = await cync_cloud_api.check_token()
         if succ is False:
             req_succ = await cync_cloud_api.request_otp()
             if req_succ is True:
                 ret_msg = "OTP requested, check your email for the OTP code to complete the export."
+                return {"success": False, "message": ret_msg}
             else:
                 ret_msg = "Failed to request OTP. Please check your credentials or network connection."
+                return {"success": False, "message": ret_msg}
         else:
             await cync_cloud_api.export_config_file()
-        return {"status": "success", "message": ret_msg}
+            return {"success": True, "message": ret_msg}
     except Exception as e:
         logger.exception(f"Export start failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -64,8 +64,8 @@ async def start_export():
 @app.post("/api/export/otp")
 async def submit_otp(otp_request: OTPRequest):
     try:
-        await cync_cloud_api.send_otp(otp_request.otp)
-        return {"status": "success", "message": "Export completed"}
+        succ = await cync_cloud_api.send_otp(otp_request.otp)
+        return {"success": succ, "message": "Export completed" if succ else "Failed to complete export"}
     except Exception as e:
         logger.error(f"Export completion failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
