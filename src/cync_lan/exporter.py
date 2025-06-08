@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from cync_lan.cloud_api import CyncCloudAPI
@@ -33,7 +34,15 @@ class OTPRequest(BaseModel):
 
 cync_cloud_api = CyncCloudAPI()
 app = FastAPI()
-# app.mount("/static", StaticFiles(directory="static"), name="static")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or set to your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=Path(CYNC_STATIC_DIR).expanduser().resolve()), name="static")
 
 @app.get("/exporter", response_class=HTMLResponse)
