@@ -181,10 +181,8 @@ def parse_cli():
     )
     args = parser.parse_args()
 
-    global CYNC_DEBUG
 
-    CYNC_DEBUG = args.debug
-    if CYNC_DEBUG:
+    if args.debug:
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
@@ -225,6 +223,7 @@ def main():
 async def async_main():
     check_python_version()
     if CYNC_DEBUG:
+        logger.info("main: Debug mode enabled, setting log level to DEBUG")
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
