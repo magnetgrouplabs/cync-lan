@@ -67,10 +67,35 @@ class CyncCloudAPI:
     lp: str = "CyncCloudAPI"
     auth_cache_file = CYNC_CLOUD_AUTH_PATH
     token_cache: Optional[ComputedTokenData]
+    http_session: Optional[aiohttp.ClientSession] = None
 
     def __init__(self, **kwargs):
         self.api_timeout = kwargs.get("api_timeout", 8)
+        self.lp = kwargs.get("lp", self.lp)
 
+    async def close(self):
+        """
+        Close the aiohttp session if it exists and is not closed.
+        """
+        lp = f"{self.lp}:close:"
+        if self.http_session and not self.http_session.closed:
+            logger.debug(f"{lp} Closing aiohttp ClientSession")
+            await self.http_session.close()
+            self.http_session = None
+        else:
+            logger.debug(f"{lp} No aiohttp ClientSession to close or already closed")
+
+    async def _check_session(self):
+        """
+        Check if the aiohttp session is initialized.
+        If not, create a new session.
+        """
+        if not self.http_session or self.http_session.closed:
+            logger.debug(f"{self.lp}:_check_session: Creating new aiohttp ClientSession")
+            self.http_session = aiohttp.ClientSession()
+            await self.http_session.__aenter__()
+        else:
+            logger.debug(f"{self.lp}:_check_session: Using existing aiohttp ClientSession")
 
     async def read_token_cache(self) -> Optional[ComputedTokenData]:
         """
@@ -120,6 +145,7 @@ class CyncCloudAPI:
         The username and password are defined in the hass_add-on 'configuration' page
         """
         lp = f"{self.lp}:request_otp:"
+        await self._check_session()
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
         if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
             logger.error(f"{lp} Cync account username or password not set, cannot request OTP!")
@@ -137,6 +163,7 @@ class CyncCloudAPI:
 
     async def send_otp(self, otp_code: int) -> bool:
         lp = f"{self.lp}:send_otp:"
+        await self._check_session()
         if not otp_code:
             logger.error("OTP code must be provided")
             return False
@@ -203,6 +230,7 @@ class CyncCloudAPI:
     async def request_devices(self):
         """Get a list of devices for a particular user."""
         lp = f"{self.lp}:get_devices:"
+        await self._check_session()
         user_id = self.token_cache.user_id
         access_token = self.token_cache.access_token
         api_devices_url = f"{CYNC_API_BASE}user/{user_id}/subscribe/devices"
@@ -240,6 +268,7 @@ class CyncCloudAPI:
     async def get_properties(self, product_id: str, device_id: str):
         """Get properties for a single device. Properties contain a device list (bulbsArray), groups (groupsArray), and saved light effects (lightShows)."""
         lp = f"{self.lp}:get_properties:"
+        await self._check_session()
         access_token = self.token_cache.access_token
         api_device_info_url = f"{CYNC_API_BASE}product/{product_id}/device/{device_id}/property"
         headers = {"Access-Token": access_token}

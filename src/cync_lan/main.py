@@ -11,6 +11,7 @@ from typing import Optional
 import aiohttp
 import uvloop
 
+from cync_lan.cloud_api import CyncCloudAPI
 from cync_lan.const import *
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
@@ -52,8 +53,6 @@ def signal_handler(signum) -> None:
                 tasks.append(g.ncync_server.stop())
             if g.mqtt_client:
                 tasks.append(g.mqtt_client.stop())
-            if g.http_session:
-                tasks.append(g.http_session.close())
             if g.export_server:
                 tasks.append(g.export_server.stop())
             if tasks:
@@ -76,7 +75,7 @@ class CyncLAN:
         # create an aiohttp session to be used for Cloud API calls
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         g.loop = asyncio.get_event_loop()
-        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, setting up event loop signal handlers...")
+        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION} [SANITY CHECK: {SANITY_CHECK}]) stack initializing, setting up event loop signal handlers...")
         g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
         g.loop.add_signal_handler(signal.SIGTERM, partial(signal_handler, signal.SIGTERM))
 
@@ -121,13 +120,14 @@ class CyncLAN:
         global global_tasks
 
         lp = f"{self.lp}start:"
-        g.http_session = aiohttp.ClientSession()
         g.ncync_server = nCyncServer()
-        g.export_server = ExportServer()
+        if ENABLE_EXPORTER is True:
+            g.cloud_api = CyncCloudAPI()
+            g.export_server = ExportServer()
+            global_tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         g.mqtt_client = MQTTClient()
 
         global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
-        global_tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         global_tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
         try:
             await asyncio.gather(*global_tasks, return_exceptions=True)
@@ -148,12 +148,12 @@ class CyncLAN:
             tasks.append(asyncio.Task(g.ncync_server.stop(), name="CyncLanServer_STOP"))
         if g.export_server:
             tasks.append(asyncio.Task(g.export_server.stop(), name="ExportServer_STOP"))
+        if g.cloud_api:
+            tasks.append(asyncio.Task(g.cloud_api.close(), name="CyncCloudAPI_CLOSE"))
         if g.mqtt_client:
             tasks.append(asyncio.Task(g.mqtt_client.stop(), name="MQTTClient_STOP"))
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        if g.http_session:
-            await g.http_session.close()
         global_tasks.extend(tasks)
         logger.info(f"{lp} All services stopped successfully.")
 
@@ -168,6 +168,12 @@ def check_python_version():
 def parse_cli():
 
     parser = argparse.ArgumentParser(description="Cync LAN Server")
+    parser.add_argument(
+    "--export-server",
+        action="store_true",
+        help="Enable the Cync Export Server",
+    )
+
     parser.add_argument(
         "-D",
         "--debug",
@@ -187,11 +193,15 @@ def parse_cli():
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
+        logger.debug("Debug mode enabled via CLI argument")
+    if args.export_server:
+        global ENABLE_EXPORTER
+
+        logger.info("Export server enabled via CLI argument")
+        ENABLE_EXPORTER = True
     if args.env:
         env_path = args.env
         env_path = env_path.expanduser().resolve()
-        if not env_path.exists():
-            logger.error(f"Environment file {env_path} does not exist")
         try:
             import dotenv
             loaded_any = dotenv.load_dotenv(env_path, override=True)
@@ -200,6 +210,8 @@ def parse_cli():
         except Exception as e:
             logger.error(f"Failed to read environment file {env_path}: {e}")
         else:
+            if not env_path.exists():
+                logger.error(f"Environment file {env_path} does not exist")
             if loaded_any:
                 logger.info(f"Environment variables loaded from {env_path}")
                 g.reload_env()

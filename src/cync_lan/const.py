@@ -6,8 +6,10 @@ import tzlocal
 
 from cync_lan import __version__
 
-
+SANITY_CHECK = 'chicken_little'
 __all__ = [
+    "SANITY_CHECK",
+    "ENABLE_EXPORTER",
     "CYNC_BASE_DIR",
     "CYNC_STATIC_DIR",
     "INGRESS_PORT",
@@ -98,6 +100,7 @@ DATA_BOUNDARY = 0x7E
 RAW_MSG = (
     " Set the CYNC_RAW_DEBUG env var to 1 to see the data" if CYNC_RAW is False else ""
 )
+ENABLE_EXPORTER: bool = False
 if CYNC_TCP_WHITELIST:
     # split into a list using comma
     CYNC_TCP_WHITELIST = CYNC_TCP_WHITELIST.split(',')

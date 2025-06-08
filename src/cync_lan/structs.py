@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from cync_lan.exporter import ExportServer
     from cync_lan.mqtt_client import MQTTClient
     from cync_lan.server import nCyncServer
+    from cync_lan.cloud_api import CyncCloudAPI
+
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 
@@ -43,9 +45,9 @@ class GlobalObjEnv(BaseModel):
 class GlobalObject:
     ncync_server: Optional[nCyncServer] = None
     mqtt_client: Optional[MQTTClient] = None
-    http_session: Optional[aiohttp.ClientSession] = None
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
     export_server: Optional[ExportServer] = None
+    cloud_api: Optional[CyncCloudAPI] = None
     env: GlobalObjEnv = GlobalObjEnv()
 
     _instance: Optional['GlobalObject'] = None

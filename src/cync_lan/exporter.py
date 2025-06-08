@@ -13,8 +13,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from cync_lan.cloud_api import CyncCloudAPI
 from cync_lan.const import *
+from cync_lan.structs import GlobalObject
+
+g = GlobalObject()
 
 
 logger = logging.getLogger("cync-lan.exporter")
@@ -28,7 +30,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
 
-cync_cloud_api: Optional[CyncCloudAPI] = None
 
 class OTPRequest(BaseModel):
     otp: int
@@ -47,10 +48,6 @@ app.mount("/static", StaticFiles(directory=Path(CYNC_STATIC_DIR).expanduser().re
 
 @app.get("/exporter", response_class=HTMLResponse)
 async def get_index():
-    global cync_cloud_api
-    if cync_cloud_api is None:
-        cync_cloud_api = CyncCloudAPI()
-
     with Path(CYNC_STATIC_DIR + "/index.html").expanduser().resolve().open("r") as f:
         return f.read()
 
@@ -58,9 +55,9 @@ async def get_index():
 async def start_export():
     ret_msg = "Export started successfully"
     try:
-        succ = await cync_cloud_api.check_token()
+        succ = await g.cloud_api.check_token()
         if succ is False:
-            req_succ = await cync_cloud_api.request_otp()
+            req_succ = await g.cloud_api.request_otp()
             if req_succ is True:
                 ret_msg = "OTP requested, check your email for the OTP code to complete the export."
                 return {"success": False, "message": ret_msg}
@@ -68,7 +65,7 @@ async def start_export():
                 ret_msg = "Failed to request OTP. Please check your credentials or network connection."
                 return {"success": False, "message": ret_msg}
         else:
-            await cync_cloud_api.export_config_file()
+            await g.cloud_api.export_config_file()
             return {"success": True, "message": ret_msg}
     except Exception as e:
         logger.exception(f"Export start failed: {e}")
@@ -79,9 +76,9 @@ async def submit_otp(otp_request: OTPRequest):
     ret_msg = "Export completed successfully"
     export_succ = False
     try:
-        otp_succ = await cync_cloud_api.send_otp(otp_request.otp)
+        otp_succ = await g.cloud_api.send_otp(otp_request.otp)
         if otp_succ:
-            export_succ = await cync_cloud_api.export_config_file()
+            export_succ = await g.cloud_api.export_config_file()
             if not export_succ:
                 ret_msg = "Failed to complete export after OTP verification."
                 return {"success": False, "message": ret_msg}
