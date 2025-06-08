@@ -10,6 +10,7 @@ from cync_lan.const import *
 from cync_lan.devices import CyncDevice
 from cync_lan.metadata.model_info import device_type_map
 from cync_lan.structs import DeviceStatus, GlobalObject
+from cync_lan.utils import send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g: Optional[GlobalObject] = None
@@ -164,9 +165,15 @@ class MQTTClient:
             await self.client.__aenter__()
         except aiomqtt.MqttError as mqtt_err_exc:
             # -> [Errno 111] Connection refused
+            # [code:134] Bad user name or password
             logger.error(
                 f"{lp} Connection failed [MqttError] -> {mqtt_err_exc}"
             )
+            if 'code:134' in str(mqtt_err_exc):
+                logger.error(
+                    f"{lp} Bad username or password, check your MQTT credentials (username: {g.env.mqtt_user})"
+                )
+                send_sigterm()
         else:
             self._connected = True
             logger.info(f"{lp} Connected to MQTT broker: {self.broker_host} port: {self.broker_port}")

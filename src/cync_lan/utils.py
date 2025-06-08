@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import signal
 import struct
 from pathlib import Path
 from typing import Optional, List, Tuple
@@ -9,6 +11,33 @@ from typing import Optional, List, Tuple
 from cync_lan.const import *
 
 logger = logging.getLogger(CYNC_LOG_NAME)
+
+def send_signal(signal_num: int):
+    """
+    Send a signal to the current process.
+
+    Args:
+        signal_num (int): The signal number to send.
+    """
+    try:
+        os.kill(os.getpid(), signal_num)
+    except OSError as e:
+        logger.error(f"Failed to send signal {signal_num}: {e}")
+        raise e
+
+def send_sigint():
+    """
+    Send a SIGINT signal to the current process.
+    This is typically used to gracefully shut down the application.
+    """
+    send_signal(signal.SIGINT)
+
+def send_sigterm():
+    """
+    Send a SIGTERM signal to the current process.
+    This is typically used to request termination of the application.
+    """
+    send_signal(signal.SIGTERM)
 
 def bytes2list(byte_string: bytes) -> List[int]:
     """Convert a byte string to a list of integers"""
