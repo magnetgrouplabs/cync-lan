@@ -211,7 +211,6 @@ class CyncCloudAPI:
                 r = await sesh.get(
                     api_devices_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.api_timeout)
                 )
-                r.raise_for_status()
             except aiohttp.ClientResponseError as e:
                 logger.error(f"{lp} Failed to get devices: {e}")
                 raise e
