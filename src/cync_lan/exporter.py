@@ -28,11 +28,11 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
 
+cync_cloud_api: Optional[CyncCloudAPI] = None
 
 class OTPRequest(BaseModel):
     otp: int
 
-cync_cloud_api = CyncCloudAPI()
 app = FastAPI()
 
 app.add_middleware(
@@ -47,6 +47,10 @@ app.mount("/static", StaticFiles(directory=Path(CYNC_STATIC_DIR).expanduser().re
 
 @app.get("/exporter", response_class=HTMLResponse)
 async def get_index():
+    global cync_cloud_api
+    if cync_cloud_api is None:
+        cync_cloud_api = CyncCloudAPI()
+
     with Path(CYNC_STATIC_DIR + "/index.html").expanduser().resolve().open("r") as f:
         return f.read()
 
@@ -76,7 +80,7 @@ async def submit_otp(otp_request: OTPRequest):
         succ = await cync_cloud_api.send_otp(otp_request.otp)
         return {"success": succ, "message": "Export completed" if succ else "Failed to complete export"}
     except Exception as e:
-        logger.error(f"Export completion failed: {str(e)}")
+        logger.exception(f"Export completion failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/healthcheck")

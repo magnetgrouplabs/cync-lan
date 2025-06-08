@@ -68,31 +68,9 @@ class CyncCloudAPI:
     auth_cache_file = CYNC_CLOUD_AUTH_PATH
     token_cache: Optional[ComputedTokenData]
 
-    _http_session: Optional[aiohttp.ClientSession] = None
-    # Singleton
-    _instance: Optional['CyncCloudAPI'] = None
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def     __init__(self, **kwargs):
+    def __init__(self, **kwargs):
         self.api_timeout = kwargs.get("api_timeout", 8)
-        self.session = g.http_session
 
-    @property
-    def session(self) -> Optional[aiohttp.ClientSession]:
-        """Return the aiohttp session."""
-        return self._http_session
-
-    @session.setter
-    def session(self, session: aiohttp.ClientSession):
-        """Set the aiohttp session."""
-        if not isinstance(session, aiohttp.ClientSession):
-            pass
-        else:
-            self._http_session = session
 
     async def read_token_cache(self) -> Optional[ComputedTokenData]:
         """
@@ -141,23 +119,15 @@ class CyncCloudAPI:
         Request an OTP code for 2FA authentication.
         The username and password are defined in the hass_add-on 'configuration' page
         """
-        from cync_lan.const import CYNC_ACCOUNT_PASSWORD, CYNC_ACCOUNT_USERNAME
-
         lp = f"{self.lp}:request_otp:"
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
         if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
             logger.error(f"{lp} Cync account username or password not set, cannot request OTP!")
             return False
         auth_data = {"corp_id": CYNC_CORP_ID, "email": CYNC_ACCOUNT_USERNAME, "local_lang": CYNC_ACCOUNT_LANGUAGE}
-        if self.session is None:
-            logger.debug(f"{lp} No aiohttp session found, creating a new one ({g.http_session=})")
-            if g.http_session is not None:
-                self.session = g.http_session
-            else:
-                self.session = aiohttp.ClientSession()
-        async with self.session as sesh:
+        async with aiohttp.ClientSession() as sesh:
             try:
-                otp_r = await sesh.post(req_otp_url, json=auth_data)
+                otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
                 otp_r.raise_for_status()
             except aiohttp.ClientResponseError as e:
                 logger.error(f"{lp} Failed to request OTP code: {e}")
@@ -185,9 +155,10 @@ class CyncCloudAPI:
             "two_factor": otp_code,
             "resource": ''.join(random.choices(string.ascii_lowercase, k=16)),
         }
-        async with self.session as sesh:
+
+        async with aiohttp.ClientSession() as sesh:
             try:
-                r = await sesh.post(api_auth_url, json=auth_data)
+                r = await sesh.post(api_auth_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
                 r.raise_for_status()
                 iat = datetime.datetime.now(datetime.UTC)
                 token_data = await r.json()
@@ -234,7 +205,7 @@ class CyncCloudAPI:
         access_token = self.token_cache.access_token
         api_devices_url = f"{CYNC_API_BASE}user/{user_id}/subscribe/devices"
         headers = {"Access-Token": access_token}
-        async with self.session as sesh:
+        async with aiohttp.ClientSession() as sesh:
             try:
                 r = await sesh.get(
                     api_devices_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.api_timeout)
@@ -271,7 +242,7 @@ class CyncCloudAPI:
         access_token = self.token_cache.access_token
         api_device_info_url = f"{CYNC_API_BASE}product/{product_id}/device/{device_id}/property"
         headers = {"Access-Token": access_token}
-        async with self.session as sesh:
+        async with aiohttp.ClientSession() as sesh:
             try:
                 r = await sesh.get(
                     api_device_info_url,
