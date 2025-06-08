@@ -167,7 +167,7 @@ class nCyncServer:
             logger.exception("%s Failed to start server: %s" % (lp, e))
         else:
             logger.info(
-                f"{lp} bound to {self.host}:{self.port} - Waiting for connections, if you dont"
+                f"{lp} bound to {self.host}:{self.port} - Waiting for connections from Cync devices, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
             try:

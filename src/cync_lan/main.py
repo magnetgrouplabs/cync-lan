@@ -23,10 +23,10 @@ formatter = logging.Formatter(
     "%m/%d/%y %H:%M:%S",
 )
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
+handler.setLevel(logging.DEBUG)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 g = GlobalObject()
 cync: Optional["CyncLAN"] = None
@@ -82,12 +82,13 @@ class CyncLAN:
 
     def _is_first_run(self):
         """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""
+        uuid_file = Path(CYNC_UUID_PATH).expanduser().resolve()
+
         def write_uuid_to_disk(uuid_str: str):
-            uuid_file = Path(CYNC_UUID_PATH)
             with open(uuid_file, "w") as f:
                 f.write(uuid_str)
-            logger.info(f"{self.lp} UUID written to disk: {uuid_str}")
-        uuid_file = Path(CYNC_UUID_PATH)
+            logger.info(f"{self.lp} UUID ({uuid_str}) written to disk: {uuid_file.as_posix()}")
+
         uuid_from_disk = ""
         create_uuid = False
         try:
@@ -103,7 +104,7 @@ class CyncLAN:
                         logger.warning(f"{self.lp} Invalid UUID version in uuid.txt: {uuid_from_disk}")
                         create_uuid = True
             else:
-                logger.info(f"{self.lp} No uuid.txt found")
+                logger.info(f"{self.lp} No uuid.txt found in {uuid_file.parent.as_posix()}")
                 create_uuid = True
         except PermissionError:
             logger.error(f"{self.lp} PermissionError: Unable to read/write {CYNC_UUID_PATH}. Please check permissions.")

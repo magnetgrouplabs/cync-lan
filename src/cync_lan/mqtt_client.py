@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import uuid
 from typing import Optional, Union, List, Coroutine
 
@@ -173,6 +174,8 @@ class MQTTClient:
                 logger.error(
                     f"{lp} Bad username or password, check your MQTT credentials (username: {g.env.mqtt_user})"
                 )
+                logger.info(f"ENV = \n\n{os.environ}\n\n")
+                logger.info(f"{g.env=}")
                 send_sigterm()
         else:
             self._connected = True
