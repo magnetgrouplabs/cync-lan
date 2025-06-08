@@ -196,6 +196,7 @@ class CyncCloudAPI:
             return False
         else:
             logger.debug(f"{lp} Token cache written successfully to: {self.auth_cache_file}")
+            self.token_cache = tkn
             return True
 
     async def request_devices(self):
