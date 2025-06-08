@@ -70,6 +70,11 @@ async def submit_otp(otp_request: OTPRequest):
         logger.error(f"Export completion failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/healthcheck")
+async def health_check():
+    """Health check endpoint to verify if the server is running."""
+    return {"status": "ok", "message": "Cync Export Server is running"}
+
 @app.get("/api/export/download")
 async def download_config():
     config_path = CYNC_CONFIG_FILE_PATH
