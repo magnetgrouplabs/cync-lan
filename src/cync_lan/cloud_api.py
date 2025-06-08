@@ -155,6 +155,7 @@ class CyncCloudAPI:
             "two_factor": otp_code,
             "resource": ''.join(random.choices(string.ascii_lowercase, k=16)),
         }
+        logger.debug(f"{lp} Sending OTP code: {otp_code} to Cync Cloud API for authentication\n\n{auth_data=}\n\n")
 
         async with aiohttp.ClientSession() as sesh:
             try:
