@@ -250,17 +250,15 @@ class CyncCloudAPI:
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=self.api_timeout),
                 )
-                r.raise_for_status()
+                ret = await r.json()
             except aiohttp.ClientResponseError as e:
                 logger.error(f"{lp} Failed to get device properties: {e}")
-                raise e
             except json.JSONDecodeError as je:
                 logger.error(f"{lp} Failed to decode JSON: {je}")
                 raise je
             except KeyError as ke:
                 logger.error(f"{lp} Failed to get key from JSON: {ke}")
                 raise ke
-            ret = await r.json()
 
         # {'error': {'msg': 'Access-Token Expired', 'code': 4031021}}
         logit = False
