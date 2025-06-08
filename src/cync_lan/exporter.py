@@ -76,12 +76,23 @@ async def start_export():
 
 @app.post("/api/export/otp")
 async def submit_otp(otp_request: OTPRequest):
+    ret_msg = "Export completed successfully"
+    export_succ = False
     try:
-        succ = await cync_cloud_api.send_otp(otp_request.otp)
-        return {"success": succ, "message": "Export completed" if succ else "Failed to complete export"}
+        otp_succ = await cync_cloud_api.send_otp(otp_request.otp)
+        if otp_succ:
+            export_succ = await cync_cloud_api.export_config_file()
+            if not export_succ:
+                ret_msg = "Failed to complete export after OTP verification."
+                return {"success": False, "message": ret_msg}
+        else:
+            ret_msg = "Invalid OTP. Please try again."
+
     except Exception as e:
         logger.exception(f"Export completion failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    else:
+        return {"success": export_succ, "message": ret_msg}
 
 @app.get("/api/healthcheck")
 async def health_check():
