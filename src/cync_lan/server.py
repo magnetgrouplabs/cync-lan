@@ -35,7 +35,7 @@ class nCyncServer:
     key_file: Optional[str] = None
     loop: Union[asyncio.AbstractEventLoop, uvloop.Loop]
     _server: Optional[asyncio.Server] = None
-    lp: str = "nCyncServer:"
+    lp: str = "nCync:"
     _instance: Optional['nCyncServer'] = None
 
     def __new__(cls, *args, **kwargs):
