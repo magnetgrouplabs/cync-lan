@@ -151,15 +151,15 @@ class CyncCloudAPI:
             logger.error(f"{lp} Cync account username or password not set, cannot request OTP!")
             return False
         auth_data = {"corp_id": CYNC_CORP_ID, "email": CYNC_ACCOUNT_USERNAME, "local_lang": CYNC_ACCOUNT_LANGUAGE}
-        async with aiohttp.ClientSession() as sesh:
-            try:
-                otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
-                otp_r.raise_for_status()
-            except aiohttp.ClientResponseError as e:
-                logger.error(f"{lp} Failed to request OTP code: {e}")
-                return False
-            else:
-                return True
+        sesh = self.http_session
+        try:
+            otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
+            otp_r.raise_for_status()
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"{lp} Failed to request OTP code: {e}")
+            return False
+        else:
+            return True
 
     async def send_otp(self, otp_code: int) -> bool:
         lp = f"{self.lp}:send_otp:"
@@ -184,28 +184,28 @@ class CyncCloudAPI:
         }
         logger.debug(f"{lp} Sending OTP code: {otp_code} to Cync Cloud API for authentication\n\n{auth_data=}\n\n")
 
-        async with aiohttp.ClientSession() as sesh:
-            try:
-                r = await sesh.post(api_auth_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
-                r.raise_for_status()
-                iat = datetime.datetime.now(datetime.UTC)
-                token_data = await r.json()
-            except aiohttp.ClientResponseError as e:
-                logger.error(f"Failed to authenticate: {e}")
-                return False
-            except json.JSONDecodeError as je:
-                logger.error(f"Failed to decode JSON: {je}")
-                return False
-            except KeyError as ke:
-                logger.error(f"Failed to get key from JSON: {ke}")
-                return False
-            else:
-                logger.info(f"Two-Factor auth response: \n{token_data}")
-                # add issued_at to the token data for computing the expiration datetime
-                token_data["issued_at"] = iat
-                computed_token = ComputedTokenData(**token_data)
-                await self.write_token_cache(computed_token)
-                return True
+        sesh = self.http_session
+        try:
+            r = await sesh.post(api_auth_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
+            r.raise_for_status()
+            iat = datetime.datetime.now(datetime.UTC)
+            token_data = await r.json()
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"Failed to authenticate: {e}")
+            return False
+        except json.JSONDecodeError as je:
+            logger.error(f"Failed to decode JSON: {je}")
+            return False
+        except KeyError as ke:
+            logger.error(f"Failed to get key from JSON: {ke}")
+            return False
+        else:
+            logger.info(f"Two-Factor auth response: \n{token_data}")
+            # add issued_at to the token data for computing the expiration datetime
+            token_data["issued_at"] = iat
+            computed_token = ComputedTokenData(**token_data)
+            await self.write_token_cache(computed_token)
+            return True
 
     async def write_token_cache(self, tkn: ComputedTokenData) -> bool:
         """
@@ -235,22 +235,22 @@ class CyncCloudAPI:
         access_token = self.token_cache.access_token
         api_devices_url = f"{CYNC_API_BASE}user/{user_id}/subscribe/devices"
         headers = {"Access-Token": access_token}
-        async with aiohttp.ClientSession() as sesh:
-            try:
-                r = await sesh.get(
-                    api_devices_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.api_timeout)
-                )
-            except aiohttp.ClientResponseError as e:
-                logger.error(f"{lp} Failed to get devices: {e}")
-                raise e
-            except json.JSONDecodeError as je:
-                logger.error(f"{lp} Failed to decode JSON: {je}")
-                raise je
-            except KeyError as ke:
-                logger.error(f"{lp} Failed to get key from JSON: {ke}")
-                raise ke
-            else:
-                ret = await r.json()
+        sesh = self.http_session
+        try:
+            r = await sesh.get(
+                api_devices_url, headers=headers, timeout=aiohttp.ClientTimeout(total=self.api_timeout)
+            )
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"{lp} Failed to get devices: {e}")
+            raise e
+        except json.JSONDecodeError as je:
+            logger.error(f"{lp} Failed to decode JSON: {je}")
+            raise je
+        except KeyError as ke:
+            logger.error(f"{lp} Failed to get key from JSON: {ke}")
+            raise ke
+        else:
+            ret = await r.json()
 
         # {'error': {'msg': 'Access-Token Expired', 'code': 4031021}}
         if "error" in ret:
@@ -270,24 +270,24 @@ class CyncCloudAPI:
         lp = f"{self.lp}:get_properties:"
         await self._check_session()
         access_token = self.token_cache.access_token
-        api_device_info_url = f"{CYNC_API_BASE}product/{product_id}/device/{device_id}/property"
+        api_device_prop_url = f"{CYNC_API_BASE}product/{product_id}/device/{device_id}/property"
         headers = {"Access-Token": access_token}
-        async with aiohttp.ClientSession() as sesh:
-            try:
-                r = await sesh.get(
-                    api_device_info_url,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self.api_timeout),
-                )
-                ret = await r.json()
-            except aiohttp.ClientResponseError as e:
-                logger.error(f"{lp} Failed to get device properties: {e}")
-            except json.JSONDecodeError as je:
-                logger.error(f"{lp} Failed to decode JSON: {je}")
-                raise je
-            except KeyError as ke:
-                logger.error(f"{lp} Failed to get key from JSON: {ke}")
-                raise ke
+        sesh = self.http_session
+        try:
+            r = await sesh.get(
+                api_device_prop_url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=self.api_timeout),
+            )
+            ret = await r.json()
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"{lp} Failed to get device properties: {e}")
+        except json.JSONDecodeError as je:
+            logger.error(f"{lp} Failed to decode JSON: {je}")
+            raise je
+        except KeyError as ke:
+            logger.error(f"{lp} Failed to get key from JSON: {ke}")
+            raise ke
 
         # {'error': {'msg': 'Access-Token Expired', 'code': 4031021}}
         logit = False

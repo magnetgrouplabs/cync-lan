@@ -8,7 +8,6 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
-import aiohttp
 import uvloop
 
 from cync_lan.cloud_api import CyncCloudAPI
@@ -55,6 +54,8 @@ def signal_handler(signum) -> None:
                 tasks.append(g.mqtt_client.stop())
             if g.export_server:
                 tasks.append(g.export_server.stop())
+            if g.cloud_api:
+                tasks.append(g.cloud_api.close())
             if tasks:
                 asyncio.gather(*tasks, return_exceptions=True)
             # cancel all not-done global_tasks (start and stop tasks)
@@ -72,7 +73,6 @@ class CyncLAN:
     def __init__(self):
         lp = f"{self.lp}init:"
         self._is_first_run()
-        # create an aiohttp session to be used for Cloud API calls
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         g.loop = asyncio.get_event_loop()
         logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION} [SANITY CHECK: {SANITY_CHECK}]) stack initializing, setting up event loop signal handlers...")
@@ -188,7 +188,6 @@ def parse_cli():
     )
     args = parser.parse_args()
 
-
     if args.debug:
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
@@ -221,26 +220,27 @@ def parse_cli():
 
 def main():
     global cync
+
+    lp = "main:"
     parse_cli()
+    if CYNC_DEBUG:
+        logger.info(f"{lp} Add-on config has set logging level to: Debug")
+        logger.setLevel(logging.DEBUG)
+        for handler in logger.handlers:
+            handler.setLevel(logging.DEBUG)
     cync = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(async_main())
     except KeyboardInterrupt:
-        logger.info("main: Caught KeyboardInterrupt, exiting...")
+        logger.info(f"{lp} Caught KeyboardInterrupt, exiting...")
     except Exception as e:
-        logger.exception(f"main: Caught exception: {e}")
+        logger.exception(f"{lp} Caught exception: {e}")
     else:
-        logger.info("main: CyncLAN stack stopped gracefully, bye!")
+        logger.info(f"{lp} CyncLAN stack stopped gracefully, bye!")
 
 
 async def async_main():
     check_python_version()
-    if CYNC_DEBUG:
-        logger.info("main: Debug mode enabled, setting log level to DEBUG")
-        logger.setLevel(logging.DEBUG)
-        for handler in logger.handlers:
-            handler.setLevel(logging.DEBUG)
-
     try:
         await cync.start()
     except KeyboardInterrupt as ke:

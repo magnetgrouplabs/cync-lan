@@ -41,68 +41,6 @@ class DeviceTypeInfo:
     protocol: DeviceProtocol = Field(default_factory=DeviceProtocol)
     Capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
 
-# device_type_map = {
-#     # deviceType|int : info|DeviceTypeInfo
-#     5:
-#         DeviceTypeInfo(**{
-#         "type": DeviceClassification.LIGHT,
-#         "model_name": "Tunable White A19 Bulb",
-#         "model_id": None,
-#         "lumens": 800,
-#         "protocol": DeviceProtocol(TCP=True, BTLE=True, MATTER=False),
-#         "Capabilities": LightCapabilities(power=True, dimmable=True, tunable_white=True),
-#         }),
-#
-#     19: "Tunable White A19 Bulb",
-#     21: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
-#     22: "C by GE Full Color BR30 Bulb (BTLE only) [CLEDR3010C2 700 lum]",
-#     26: "C by GE BR30 (BTLE only) Tunable White 2000-7000K [CLEDR309S2 800 lum]",
-#     30: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 760 lum]",
-#     31: "C by GE Full Color A19 Bulb (BTLE only) [CLEDA1911C2 800 lum]",
-#
-#     37: "Dimmer Switch with Motion and Ambient Light [CSWDMOCBWF1]",
-#
-#     42: "Reveal HD+ Full Color Under Cabinet Light - 18 Inch",
-#     43: "Reveal HD+ Full Color Under Cabinet Light - 24 Inch",
-#
-#     48: {
-#         "type": DeviceClassification.SWITCH,
-#         "model_name": "C by GE (C Start Smart) Switch",
-#         "model_id": "CSWDMBLBWF1",
-#         "protocol": DeviceProtocol(TCP=True),
-#         "Capabilities": SwitchCapabilities(),
-#     },
-#     49: {
-#         "type": DeviceClassification.SWITCH,
-#         "model_name": "C by GE (C Start Smart) Dimmer Switch with Motion and Ambient Light",
-#         "model_id": "CSWDMOCBWF1",
-#         "protocol": DeviceProtocol(TCP=True, BTLE=True),
-#         "Capabilities": SwitchCapabilities(dimmable=True),
-#     },
-#     52: "Switch",
-#     55: "Dimmer Switch - No Neutral",
-#     58: "Switch - No Neutral",
-#     59: "Switch",
-#     64: "Indoor Plug",
-#     68: "Indoor Plug",
-#
-#     113: "Wire-Free Dimmer with White Temperature Switch (BTLE only)",
-#
-#     131: "Full Color A19 Bulb",
-#     133: "Full Color LED Light Strip Controller",
-#     137: "Full Color A19 Bulb",
-#     138: "Full Color BR30 Floodlight [CLEDR309CD1 750 lum]",
-#     140: "Full Color Outdoor PAR38 Floodlight [CLEDP3815CD1 1300 lum]",
-#     146: "Full Color Edison ST19 Bulb [CLEDST196CDGS 500 lum]",
-#     147: "Full Color Edison G25 Bulb [CLEDG256CDGS 500 lum]",
-#     148: "White (2700K) Edison ST19 Bulb",
-#     152: "Reveal HD+ White (2700K) A19 Bulb",
-#
-#     169: "Reveal HD+ Full Color 4 Inch Wafer Downlight [CFIXCNLR4CRVD 760 lum]",
-#
-#     224: "Thermostat",
-# }
-
 device_type_map = {
     # deviceType|int : info|DeviceTypeInfo
     5: DeviceTypeInfo(
