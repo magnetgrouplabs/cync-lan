@@ -4,11 +4,11 @@ import logging
 import pickle
 import random
 import string
-from typing import Optional, Annotated
+from typing import Optional, Union
 
 import aiohttp
 import yaml
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, computed_field
 
 from cync_lan.const import *
 from cync_lan.devices import CyncDevice
@@ -30,13 +30,13 @@ class RawTokenData(BaseModel):
     # 'authorize': '2207d2c8d2c9e406'
     # }
     access_token: str
-    user_id: str
-    expires_in: Annotated[int, Field(description="Token expire in seconds", gt=0)]
+    user_id: Union[str, int]
+    expire_in: Union[str, int]
     refresh_token: str
     authorize: str
 
 class ComputedTokenData(RawTokenData):
-    issued_at: Annotated[datetime.datetime, Field(description="Token issued at time in UTC")]
+    issued_at: datetime.datetime
 
     @computed_field
     @property
@@ -46,8 +46,8 @@ class ComputedTokenData(RawTokenData):
         Returns:
             datetime.datetime: The expiration time in UTC.
         """
-        if self.issued_at and self.expires_in:
-            return self.issued_at + datetime.timedelta(seconds=self.expires_in)
+        if self.issued_at and self.expire_in:
+            return self.issued_at + datetime.timedelta(seconds=self.expire_in)
         return None
     # expires_at: Optional[datetime] = None
 
