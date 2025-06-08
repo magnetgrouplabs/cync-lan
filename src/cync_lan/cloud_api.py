@@ -157,7 +157,7 @@ class CyncCloudAPI:
                 self.session = aiohttp.ClientSession()
         async with self.session as sesh:
             try:
-                otp_r = await sesh.post(req_otp_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
+                otp_r = await sesh.post(req_otp_url, json=auth_data)
                 otp_r.raise_for_status()
             except aiohttp.ClientResponseError as e:
                 logger.error(f"{lp} Failed to request OTP code: {e}")
@@ -166,7 +166,6 @@ class CyncCloudAPI:
                 return True
 
     async def send_otp(self, otp_code: int) -> bool:
-        from cync_lan.const import CYNC_ACCOUNT_PASSWORD, CYNC_ACCOUNT_USERNAME
         lp = f"{self.lp}:send_otp:"
         if not otp_code:
             logger.error("OTP code must be provided")
@@ -188,7 +187,7 @@ class CyncCloudAPI:
         }
         async with self.session as sesh:
             try:
-                r = await sesh.post(api_auth_url, json=auth_data, timeout=aiohttp.ClientTimeout(total=self.api_timeout))
+                r = await sesh.post(api_auth_url, json=auth_data)
                 r.raise_for_status()
                 iat = datetime.datetime.now(datetime.UTC)
                 token_data = await r.json()
