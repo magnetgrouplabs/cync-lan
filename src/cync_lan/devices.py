@@ -9,9 +9,10 @@ from typing import Optional, Union, List, Dict, Coroutine, TYPE_CHECKING
 
 from cync_lan.const import *
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
+from cync_lan.structs import GlobalObject
 
 if TYPE_CHECKING:
-    from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
+    from cync_lan.structs import Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
         PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
 
 __all__ = [
@@ -19,7 +20,7 @@ __all__ = [
     "CyncTCPDevice"
 ]
 logger = logging.getLogger(CYNC_LOG_NAME)
-g: Optional[GlobalObject] = None
+g = GlobalObject()
 
 class CyncDevice:
     """
@@ -433,10 +434,6 @@ class CyncDevice:
             home_id: Optional[int] = None,
             hvac: Optional[dict] = None,
     ):
-        global g
-
-        if g is None:
-            g = GlobalObject()
         self.control_bytes = bytes([0x00, 0x00])
         if cync_id is None:
             raise ValueError("ID must be provided to constructor")
