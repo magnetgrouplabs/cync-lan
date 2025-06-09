@@ -33,7 +33,6 @@ logger.setLevel(logging.INFO)
 
 g = GlobalObject()
 SHUTTING_DOWN: bool = False
-global_tasks = []
 
 def signal_handler(signum) -> None:
     """
@@ -62,11 +61,11 @@ def signal_handler(signum) -> None:
                 asyncio.gather(*tasks, return_exceptions=True)
             # cancel all not-done global_tasks (start and stop tasks)
             if g.loop:
-                for task in global_tasks:
+                for task in g.tasks:
                     if not task.done():
                         # logger.debug(f"CyncLAN: Cancelling task: {task.get_name()}")
                         task.cancel()
-            global_tasks.clear()
+            g.tasks.clear()
 
 
 class CyncLAN:
@@ -119,21 +118,21 @@ class CyncLAN:
 
     async def start(self):
         """Start the Cync LAN server, MQTT client, and Export server."""
-        global global_tasks
-
         lp = f"{self.lp}start:"
         cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
+        tasks = []
         if cfg_file.exists():
             g.ncync_server = nCyncServer(self.parse_config(cfg_file))
-            global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
+            tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
-            global_tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
+            tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         g.mqtt_client = MQTTClient()
-        global_tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
+        tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
+        g.tasks.extend(tasks)
         try:
-            await asyncio.gather(*global_tasks, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             logger.exception(f"{lp} Exception occurred while starting services: {e}")
             # Stop all services if any service fails to start
@@ -143,8 +142,6 @@ class CyncLAN:
 
     async def stop(self):
         """Stop the Cync LAN server, MQTT client, and Export server."""
-        global global_tasks
-
         lp = f"{self.lp}stop:"
         tasks = []
         if g.ncync_server:
@@ -157,7 +154,7 @@ class CyncLAN:
             tasks.append(asyncio.Task(g.mqtt_client.stop(), name="MQTTClient_STOP"))
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        global_tasks.extend(tasks)
+        g.tasks.extend(tasks)
         logger.info(f"{lp} All services stopped successfully.")
 
     def parse_config(self, cfg_file: Path):

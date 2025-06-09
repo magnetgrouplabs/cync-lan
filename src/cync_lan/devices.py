@@ -1084,10 +1084,9 @@ class CyncDevice:
 
     @online.setter
     def online(self, value: bool):
-        global global_tasks
         if value != self._online:
             self._online = value
-            global_tasks.append(asyncio.get_running_loop().create_task(g.mqtt_client.pub_online(self.id, value)))
+            g.tasks.append(asyncio.get_running_loop().create_task(g.mqtt_client.pub_online(self.id, value)))
 
     def is_bt_only(self):
         """From my observations, if the wifi mac does not start with the same 3 groups as the mac, it's BT only."""

@@ -49,6 +49,7 @@ class GlobalObject:
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
     export_server: Optional[ExportServer] = None
     cloud_api: Optional[CyncCloudAPI] = None
+    tasks: List[asyncio.Task] = []
     env: GlobalObjEnv = GlobalObjEnv()
 
     _instance: Optional['GlobalObject'] = None
