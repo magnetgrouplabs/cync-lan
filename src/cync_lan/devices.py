@@ -1966,9 +1966,7 @@ class CyncTCPDevice:
                                                             self.id = dev_id
                                                             self.lp = f"{self.address}[{self.id}]:"
                                                             cync_device = (
-                                                                g.cfg_devices[
-                                                                    dev_id
-                                                                ]
+                                                                g.ncync_server.devices[dev_id]
                                                             )
                                                             logger.debug(
                                                                 f"{self.lp}parse:x{data[0]:02x}: Setting TCP"
