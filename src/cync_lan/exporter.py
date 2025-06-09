@@ -71,7 +71,23 @@ async def start_export():
         logger.exception(f"Export start failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/api/export/otp")
+@app.get("/api/export/otp/request")
+async def request_otp():
+    """Request OTP for export."""
+    ret_msg = "OTP requested successfully"
+    try:
+        otp_succ = await g.cloud_api.request_otp()
+        if otp_succ:
+            return {"success": True, "message": ret_msg}
+        else:
+            ret_msg = "Failed to request OTP. Please check your credentials or network connection."
+            return {"success": False, "message": ret_msg}
+    except Exception as e:
+        logger.exception(f"OTP request failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/export/otp/submit")
 async def submit_otp(otp_request: OTPRequest):
     ret_msg = "Export completed successfully"
     export_succ = False
