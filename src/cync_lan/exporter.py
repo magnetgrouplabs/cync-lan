@@ -46,7 +46,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=Path(CYNC_STATIC_DIR).expanduser().resolve()), name="static")
 
-@app.get("/exporter", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def get_index():
     with Path(CYNC_STATIC_DIR + "/index.html").expanduser().resolve().open("r") as f:
         return f.read()
