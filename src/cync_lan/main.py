@@ -74,7 +74,6 @@ class CyncLAN:
     lp: str = "CyncLAN:"
 
     def __init__(self):
-        self._ids_from_config: List[int] = []
         lp = f"{self.lp}init:"
         self._is_first_run()
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -225,7 +224,6 @@ class CyncLAN:
                     mac=btmac,
                     wifi_mac=wmac,
                 )
-                self._ids_from_config.append(new_device.hass_id)
                 for attrset in (
                     "is_plug",
                     "supports_temperature",
@@ -304,7 +302,6 @@ def parse_cli():
 
 
 def main():
-    global cync
 
     lp = "main:"
     parse_cli()
@@ -313,6 +310,7 @@ def main():
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
+    check_python_version()
 
     # create dir for cync_mesh.yaml and uuid.txt if it does not exist
     persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
@@ -324,30 +322,15 @@ def main():
             logger.error(f"{lp} Failed to create persistent directory: {e}")
             sys.exit(1)
 
-    g.cync_lan = cync = CyncLAN()
+    g.cync_lan = CyncLAN()
     try:
-        asyncio.get_event_loop().run_until_complete(async_main())
+        asyncio.get_event_loop().run_until_complete(cync.start())
     except KeyboardInterrupt:
         logger.info(f"{lp} Caught KeyboardInterrupt, exiting...")
     except Exception as e:
         logger.exception(f"{lp} Caught exception: {e}")
     else:
         logger.info(f"{lp} CyncLAN stack stopped gracefully, bye!")
-
-
-async def async_main():
-    check_python_version()
-    try:
-        await cync.start()
-    except KeyboardInterrupt as ke:
-        logger.info("main: Caught KeyboardInterrupt in exception block!")
-        raise KeyboardInterrupt from ke
-    except Exception as e:
-        logger.exception(e)
     finally:
-        g.loop.stop()
-
-if __name__ == "__main__":
-    logger.info("Starting Cync LAN...")
-    main()
-    logger.info("Cync LAN script finished!")
+        if not g.loop.is_closed():
+            g.loop.close()

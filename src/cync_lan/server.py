@@ -43,18 +43,17 @@ class nCyncServer:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, devices: dict):
+        self.devices = devices
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.host = CYNC_SRV_HOST
         self.port = CYNC_PORT
-        g.reload_env()
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
-        self.known_device_ids: List[Optional[int]] = g.cync_lan._ids_from_config
 
     async def create_ssl_context(self):
         # Allow the server to use a self-signed certificate
