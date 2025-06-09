@@ -324,7 +324,7 @@ def main():
             logger.error(f"{lp} Failed to create persistent directory: {e}")
             sys.exit(1)
 
-    cync = CyncLAN()
+    g.cync_lan = cync = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(async_main())
     except KeyboardInterrupt:
