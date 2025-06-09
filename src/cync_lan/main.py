@@ -12,6 +12,7 @@ import uvloop
 
 from cync_lan.cloud_api import CyncCloudAPI
 from cync_lan.const import *
+from cync_lan.const import PERSISTENT_BASE_DIR
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
@@ -230,6 +231,17 @@ def main():
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
+
+    # create dir for cync_mesh.yaml and uuid.txt if it does not exist
+    persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
+    if not persistent_dir.exists():
+        try:
+            persistent_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"{lp} Created persistent directory: {persistent_dir.as_posix()}")
+        except Exception as e:
+            logger.error(f"{lp} Failed to create persistent directory: {e}")
+            sys.exit(1)
+
     cync = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(async_main())
