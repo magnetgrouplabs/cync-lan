@@ -6,7 +6,7 @@ import sys
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import uvloop
 import yaml
@@ -74,6 +74,7 @@ class CyncLAN:
     lp: str = "CyncLAN:"
 
     def __init__(self):
+        self._ids_from_config: List[int] = []
         lp = f"{self.lp}init:"
         self._is_first_run()
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -125,8 +126,9 @@ class CyncLAN:
         lp = f"{self.lp}start:"
         cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
         if cfg_file.exists():
-            self.parse_config(cfg_file)
+            devices = self.parse_config(cfg_file)
             g.ncync_server = nCyncServer()
+            g.ncync_server.devices = devices
             global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
@@ -223,6 +225,7 @@ class CyncLAN:
                     mac=btmac,
                     wifi_mac=wmac,
                 )
+                self._ids_from_config.append(new_device.hass_id)
                 for attrset in (
                     "is_plug",
                     "supports_temperature",

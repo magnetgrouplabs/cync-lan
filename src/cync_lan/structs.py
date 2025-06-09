@@ -6,7 +6,6 @@ import os
 import time
 from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
-import aiohttp
 import uvloop
 from pydantic import BaseModel, ConfigDict
 from pydantic.dataclasses import dataclass
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     from cync_lan.mqtt_client import MQTTClient
     from cync_lan.server import nCyncServer
     from cync_lan.cloud_api import CyncCloudAPI
+    from cync_lan.main import CyncLAN
 
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -43,6 +43,7 @@ class GlobalObjEnv(BaseModel):
     cync_srv_ssl_key: Optional[str] = None
 
 class GlobalObject:
+    cync_lan: Optional[CyncLAN] = None
     ncync_server: Optional[nCyncServer] = None
     mqtt_client: Optional[MQTTClient] = None
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None

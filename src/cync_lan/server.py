@@ -54,7 +54,7 @@ class nCyncServer:
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
             asyncio.get_event_loop()
         )
-        self.known_device_ids: List[Optional[int]] = []
+        self.known_device_ids: List[Optional[int]] = g.cync_lan._ids_from_config
 
     async def create_ssl_context(self):
         # Allow the server to use a self-signed certificate
