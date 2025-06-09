@@ -6,7 +6,7 @@ import tzlocal
 
 from cync_lan import __version__
 
-SANITY_CHECK = 'cmon_man'
+SANITY_CHECK = 'fingers_crossed_dude'
 __all__ = [
     "SANITY_CHECK",
     "ENABLE_EXPORTER",
