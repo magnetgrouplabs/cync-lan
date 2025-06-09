@@ -148,34 +148,30 @@ def signal_handler(signum) -> None:
     """
     Handle signals for graceful shutdown.
     """
-    global SHUTTING_DOWN
 
-    _msg = "shutting down..." if SHUTTING_DOWN is False else "already shutting down!"
     logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum}), {_msg}")
-    if SHUTTING_DOWN is False:
-        SHUTTING_DOWN = True
-        if g:
-            # instead of calling self.close(), which would add the close tasks to global_tasks
-            # we call stop() on the services directly, and cancel the self.start() tasks
-            # crucial to stop the MQTT connection retry loop
-            tasks = []
-            if g.ncync_server:
-                tasks.append(g.ncync_server.stop())
-            if g.mqtt_client:
-                tasks.append(g.mqtt_client.stop())
-            if g.export_server:
-                tasks.append(g.export_server.stop())
-            if g.cloud_api:
-                tasks.append(g.cloud_api.close())
-            if tasks:
-                asyncio.gather(*tasks, return_exceptions=True)
-            # cancel all not-done global_tasks (start and stop tasks)
-            if g.loop:
-                for task in g.tasks:
-                    if not task.done():
-                        # logger.debug(f"CyncLAN: Cancelling task: {task.get_name()}")
-                        task.cancel()
-            g.tasks.clear()
+    if g:
+        # instead of calling self.close(), which would add the close tasks to global_tasks
+        # we call stop() on the services directly, and cancel the self.start() tasks
+        # crucial to stop the MQTT connection retry loop
+        tasks = []
+        if g.ncync_server:
+            tasks.append(g.ncync_server.stop())
+        if g.mqtt_client:
+            tasks.append(g.mqtt_client.stop())
+        if g.export_server:
+            tasks.append(g.export_server.stop())
+        if g.cloud_api:
+            tasks.append(g.cloud_api.close())
+        if tasks:
+            asyncio.gather(*tasks, return_exceptions=True)
+        # cancel all not-done global_tasks (start and stop tasks)
+        if g.loop:
+            for task in g.tasks:
+                if not task.done():
+                    # logger.debug(f"CyncLAN: Cancelling task: {task.get_name()}")
+                    task.cancel()
+        g.tasks.clear()
 
 
 async def parse_config(cfg_file: Path):
