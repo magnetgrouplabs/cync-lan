@@ -124,8 +124,7 @@ class CyncLAN:
         lp = f"{self.lp}start:"
         cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
         if cfg_file.exists():
-            devices = self.parse_config(cfg_file)
-            g.ncync_server = nCyncServer()
+            g.ncync_server = nCyncServer(devices = self.parse_config(cfg_file))
             g.ncync_server.devices = devices
             global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         if ENABLE_EXPORTER is True:
