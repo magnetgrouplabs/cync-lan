@@ -170,7 +170,9 @@ def parse_cli():
     parser = argparse.ArgumentParser(description="Cync LAN Server")
     parser.add_argument(
     "--export-server",
+        "--enable-export-server",
         action="store_true",
+        dest="export_server",
         help="Enable the Cync Export Server",
     )
 
