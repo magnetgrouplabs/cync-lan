@@ -106,7 +106,7 @@ PERSISTENT_BASE_DIR: str = "/homeassistant/.storage/cync-lan/config"
 CYNC_CONFIG_FILE_PATH: str = f"{PERSISTENT_BASE_DIR}/cync_mesh.yaml"
 CYNC_UUID_PATH: str = f"{PERSISTENT_BASE_DIR}/uuid.txt"
 
-CYNC_CLOUD_AUTH_PATH: str = f"{CYNC_BASE_DIR}/cync-lan/.auth/.cloud_auth.yaml"
+CYNC_CLOUD_AUTH_PATH: str = f"{PERSISTENT_BASE_DIR}/.cloud_auth.yaml"
 CYNC_SSL_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
 CYNC_SSL_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
 
