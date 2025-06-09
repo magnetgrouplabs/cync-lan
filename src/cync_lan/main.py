@@ -123,14 +123,16 @@ class CyncLAN:
         global global_tasks
 
         lp = f"{self.lp}start:"
-        g.ncync_server = nCyncServer()
+        cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
+        if cfg_file.exists():
+            self.parse_config(cfg_file)
+            g.ncync_server = nCyncServer()
+            global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
             global_tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         g.mqtt_client = MQTTClient()
-
-        global_tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         global_tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
         try:
             await asyncio.gather(*global_tasks, return_exceptions=True)
@@ -167,7 +169,7 @@ class CyncLAN:
         If you add new or delete existing devices, you will need to re-export the config.
         """
         lp = f"{self.lp}parse_config:"
-        logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.expanduser().resolve().as_posix()}")
+        logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.as_posix()}")
         try:
             raw_config = yaml.safe_load(cfg_file.read_text())
         except Exception as e:
