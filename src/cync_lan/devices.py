@@ -1955,9 +1955,9 @@ class CyncTCPDevice:
                                                 )
                                                 _m.append(bytes2list(raw_status))
                                                 _raw_m.append(mesh_dev_struct.hex(" "))
-                                                if dev_id in g.cync_lan.ncync_server.devices:
+                                                if dev_id in g.ncync_server.devices:
                                                     # first device id is the device id of the TCP device we are connected to
-                                                    ___dev = g.cync_lan.ncync_server.devices[dev_id]
+                                                    ___dev = g.ncync_server.devices[dev_id]
                                                     dev_name = ___dev.name
                                                     if loop_num == 1:
                                                         # byte 3 (idx 2) is a device type byte but,
@@ -1967,7 +1967,7 @@ class CyncTCPDevice:
                                                             self.id = dev_id
                                                             self.lp = f"{self.address}[{self.id}]:"
                                                             cync_device = (
-                                                                g.cync_lan.cfg_devices[
+                                                                g.cfg_devices[
                                                                     dev_id
                                                                 ]
                                                             )
@@ -2003,7 +2003,7 @@ class CyncTCPDevice:
                                                     logger.warning(
                                                         f"{lp} Device ID {dev_id} not found in devices "
                                                         f"defined in config file: "
-                                                        f"{g.cync_lan.ncync_server.devices.keys()}"
+                                                        f"{g.ncync_server.devices.keys()}"
                                                     )
                                             # -- END OF mesh info response parsing loop --
                                         except IndexError:
