@@ -1,4 +1,9 @@
-# pycync_lan (cync_lan)
+# THERE IS NOW A HASS ADD-ON FOR THIS PROJECT!
+
+[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fbaudneo%2Fhass-addons)
+
+The existing `python` branch will remain for users who prefer a non HASS add-on setup.
+
 ![GitHub Release](https://img.shields.io/github/v/release/baudneo/cync-lan) 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/baudneo/cync-lan/container-package-publish.yml) 
 ![Docker Pulls](https://img.shields.io/docker/pulls/baudneo/cync-lan)
@@ -19,7 +24,7 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 [juanboro](https://github.com/juanboro)
 
 ## Prerequisites
-- Python 3.8+ (Walrus [:=] operator used)
+- Python 3.9+ (Walrus [:=] operator and `zoneinfo` built-in package used)
 - A minimum of 1, non battery powered, Wi-Fi (*Direct Connect*) Cync / C by GE device to act as the TCP <-> BT bridge (always on)
 - Cync account with devices added
 - MQTT broker (I recommend EMQX)
