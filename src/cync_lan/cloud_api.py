@@ -4,63 +4,17 @@ import logging
 import pickle
 import random
 import string
-from typing import Optional, Union
+from typing import Optional
 
 import aiohttp
 import yaml
-from pydantic import BaseModel, computed_field
 
 from cync_lan.const import *
-from cync_lan.const import PERSISTENT_BASE_DIR
 from cync_lan.devices import CyncDevice
-from cync_lan.structs import GlobalObject
+from cync_lan.structs import GlobalObject, ComputedTokenData
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
-
-class RawTokenData(BaseModel):
-    """
-    Model for cloud token data.
-    """
-    # API Auth Response:
-    # {
-    # 'access_token': '1007d2ad150c4000-2407d4d081dbea53DAwQjkzNUM2RDE4QjE0QTIzMjNGRjAwRUU4ODNEQUE5RTFCMjhBOQ==',
-    # 'refresh_token': 'REY3NjVENEQwQTM4NjE2OEM3QjNGMUZEQjQyQzU0MEIzRTU4NzMyRDdFQzZFRUYyQTUxNzE4RjAwNTVDQ0Y3Mw==',
-    # 'user_id': 769963474,
-    # 'expire_in': 604800,
-    # 'authorize': '2207d2c8d2c9e406'
-    # }
-    access_token: str
-    user_id: Union[str, int]
-    expire_in: Union[str, int]
-    refresh_token: str
-    authorize: str
-
-class ComputedTokenData(RawTokenData):
-    issued_at: datetime.datetime
-
-    @computed_field
-    @property
-    def expires_at(self) -> Optional[datetime.datetime]:
-        """
-        Calculate the expiration time of the token based on the issued time and expires_in.
-        Returns:
-            datetime.datetime: The expiration time in UTC.
-        """
-        if self.issued_at and self.expire_in:
-            return self.issued_at + datetime.timedelta(seconds=self.expire_in)
-        return None
-    # expires_at: Optional[datetime] = None
-
-    # def model_post_init(self, __context) -> None:
-    #     if self.expires_in:
-    #         self.expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=self.expires_in)
-
-def utc_to_local(utc_dt: datetime.datetime) -> datetime.datetime:
-    # local_tz = zoneinfo.ZoneInfo(str(tzlocal.get_localzone()))
-    # utc_time = datetime.datetime.now(datetime.UTC)
-    local_time = utc_dt.astimezone(LOCAL_TZ)
-    return local_time
 
 
 class CyncCloudAPI:
@@ -69,6 +23,12 @@ class CyncCloudAPI:
     auth_cache_file = CYNC_CLOUD_AUTH_PATH
     token_cache: Optional[ComputedTokenData]
     http_session: Optional[aiohttp.ClientSession] = None
+    _instance: Optional['CyncCloudAPI'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self, **kwargs):
         self.api_timeout = kwargs.get("api_timeout", 8)

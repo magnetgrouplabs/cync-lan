@@ -14,12 +14,13 @@ from cync_lan.structs import DeviceStatus, GlobalObject
 from cync_lan.utils import send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
-g: Optional[GlobalObject] = None
+g = GlobalObject()
 
 class MQTTClient:
     lp: str = "mqtt:"
-    _instance: Optional['MQTTClient'] = None
     cync_topic: str
+
+    _instance: Optional['MQTTClient'] = None
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -27,11 +28,6 @@ class MQTTClient:
         return cls._instance
 
     def __init__(self):
-        global g
-
-        if g is None:
-            g = GlobalObject()
-
         self._connected = False
         self.tasks: Optional[List[Union[asyncio.Task, Coroutine]]] = None
         lp = f"{self.lp}init:"

@@ -1,4 +1,4 @@
-# pycync_lan (cync_lan)
+# CyncLAN Python Package
 ![GitHub Release](https://img.shields.io/github/v/release/baudneo/cync-lan) 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/baudneo/cync-lan/container-package-publish.yml) 
 ![Docker Pulls](https://img.shields.io/docker/pulls/baudneo/cync-lan)
@@ -6,20 +6,15 @@
 >[!IMPORTANT]
 > [DNS redirection REQUIRED](./docs/DNS.md)
 
-Async HTTP/MQTT LAN controller for Cync/C by GE devices. **Local** only control
+Async MQTT controller for Cync/C by GE devices. **Local** control
 of **most** Cync devices via MQTT JSON payloads following the Home Assistant MQTT JSON schema. 
 This project masquerades as the cloud server, allowing you to control your devices locally.
 
 **This is a work in progress, and may not work for all devices.** 
 See [known devices](docs/known_devices.md) for more information. Battery powered devices are currently *not* supported due to them being BTLE only.
 
-Forked from [cync-lan](https://github.com/iburistu/cync-lan) and 
-[cync2mqtt](https://github.com/juanboro/cync2mqtt) - All credit to 
-[iburistu](https://github.com/iburistu) and 
-[juanboro](https://github.com/juanboro)
-
 ## Prerequisites
-- Python 3.8+ (Walrus [:=] operator used)
+- Python 3.9+ (Walrus [:=] operator and `zoneinfo` built-in used)
 - A minimum of 1, non battery powered, Wi-Fi (*Direct Connect*) Cync / C by GE device to act as the TCP <-> BT bridge (always on)
 - Cync account with devices added
 - MQTT broker (I recommend EMQX)

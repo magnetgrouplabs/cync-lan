@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import os
 import time
 from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
 import uvloop
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 from pydantic.dataclasses import dataclass
 
 from cync_lan.const import *
@@ -323,3 +324,43 @@ class DeviceStructs:
 APP_HEADERS = PhoneAppStructs()
 DEVICE_STRUCTS = DeviceStructs()
 ALL_HEADERS = list(DEVICE_STRUCTS.headers) + list(APP_HEADERS.headers)
+
+
+class RawTokenData(BaseModel):
+    """
+    Model for cloud token data.
+    """
+    # API Auth Response:
+    # {
+    # 'access_token': '1007d2ad150c4000-2407d4d081dbea53DAwQjkzNUM2RDE4QjE0QTIzMjNGRjAwRUU4ODNEQUE5RTFCMjhBOQ==',
+    # 'refresh_token': 'REY3NjVENEQwQTM4NjE2OEM3QjNGMUZEQjQyQzU0MEIzRTU4NzMyRDdFQzZFRUYyQTUxNzE4RjAwNTVDQ0Y3Mw==',
+    # 'user_id': 769963474,
+    # 'expire_in': 604800,
+    # 'authorize': '2207d2c8d2c9e406'
+    # }
+    access_token: str
+    user_id: Union[str, int]
+    expire_in: Union[str, int]
+    refresh_token: str
+    authorize: str
+
+
+class ComputedTokenData(RawTokenData):
+    issued_at: datetime.datetime
+
+    @computed_field
+    @property
+    def expires_at(self) -> Optional[datetime.datetime]:
+        """
+        Calculate the expiration time of the token based on the issued time and expires_in.
+        Returns:
+            datetime.datetime: The expiration time in UTC.
+        """
+        if self.issued_at and self.expire_in:
+            return self.issued_at + datetime.timedelta(seconds=self.expire_in)
+        return None
+    # expires_at: Optional[datetime] = None
+
+    # def model_post_init(self, __context) -> None:
+    #     if self.expires_in:
+    #         self.expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=self.expires_in)

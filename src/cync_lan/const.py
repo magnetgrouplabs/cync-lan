@@ -8,6 +8,7 @@ from cync_lan import __version__
 
 SANITY_CHECK = 'fingers_crossed_dude'
 __all__ = [
+    "PERSISTENT_BASE_DIR",
     "SANITY_CHECK",
     "ENABLE_EXPORTER",
     "CYNC_BASE_DIR",

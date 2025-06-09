@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import logging
-import os
 import asyncio
-import signal
+import logging
 import ssl
-from typing import Dict, Optional, Union, List, TYPE_CHECKING
+from typing import Dict, Optional, Union
 
 import uvloop
 
@@ -52,9 +50,7 @@ class nCyncServer:
         g.reload_env()
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key
-        self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
-            asyncio.get_event_loop()
-        )
+        self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = asyncio.get_event_loop()
 
     async def create_ssl_context(self):
         # Allow the server to use a self-signed certificate
@@ -149,7 +145,6 @@ class nCyncServer:
                 device.green = _g
                 device.blue = b
             g.ncync_server.devices[device.id] = device
-
 
     async def start(self):
         lp = f"{self.lp}start:"
