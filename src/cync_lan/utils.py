@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import datetime
 import hashlib
@@ -265,62 +264,6 @@ def check_python_version():
         sys.exit(
             "Python version 3.9 or higher REQUIRED! you have version: %s" % sys.version
         )
-
-
-def parse_cli():
-
-    parser = argparse.ArgumentParser(description="Cync LAN Server")
-    parser.add_argument(
-    "--export-server",
-        "--enable-export-server",
-        action="store_true",
-        dest="export_server",
-        help="Enable the Cync Export Server",
-    )
-
-    parser.add_argument(
-        "-D",
-        "--debug",
-        action="store_true",
-        help="Enable debug mode",
-    )
-    parser.add_argument(
-    "--env",
-        help="Path to the environment file",
-        default=None,
-        type=Path
-    )
-    args = parser.parse_args()
-
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-        for handler in logger.handlers:
-            handler.setLevel(logging.DEBUG)
-        logger.debug("Debug mode enabled via CLI argument")
-    if args.export_server:
-        global ENABLE_EXPORTER
-
-        logger.info("Export server enabled via CLI argument")
-        ENABLE_EXPORTER = True
-    if args.env:
-        env_path = args.env
-        env_path = env_path.expanduser().resolve()
-        try:
-            import dotenv
-            loaded_any = dotenv.load_dotenv(env_path, override=True)
-        except ImportError:
-            logger.error("dotenv module is not installed. Please install it with 'pip install python-dotenv'")
-        except Exception as e:
-            logger.error(f"Failed to read environment file {env_path}: {e}")
-        else:
-            if not env_path.exists():
-                logger.error(f"Environment file {env_path} does not exist")
-            if loaded_any:
-                logger.info(f"Environment variables loaded from {env_path}")
-                g.reload_env()
-            else:
-                logger.warning(f"No environment variables were loaded from {env_path}")
-
 
 def is_first_run():
     """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""

@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import os
@@ -15,7 +16,7 @@ from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
 from cync_lan.structs import GlobalObject
-from cync_lan.utils import signal_handler, parse_config, check_python_version, parse_cli, is_first_run
+from cync_lan.utils import signal_handler, parse_config, check_python_version, is_first_run
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 formatter = logging.Formatter(
@@ -62,10 +63,13 @@ class CyncLAN:
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
+            logger.info(f"ASYNC TASK START FOR Export server...")
             tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         g.mqtt_client = MQTTClient()
+        logger.info(f"ASYNC TASK START FOR MQTT client...")
         tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
         g.tasks.extend(tasks)
+        logger.info(f"{lp} Starting CyncLAN stack using asyncio.gather() with {len(tasks)} tasks...")
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
@@ -81,9 +85,62 @@ class CyncLAN:
         logger.info(f"{lp} Bringing software stack down using SIGTERM...")
         os.kill(os.getpid(), signal.SIGTERM)
 
+def parse_cli():
+
+    parser = argparse.ArgumentParser(description="Cync LAN Server")
+    parser.add_argument(
+    "--export-server",
+        "--enable-export-server",
+        action="store_true",
+        dest="export_server",
+        help="Enable the Cync Export Server",
+    )
+
+    parser.add_argument(
+        "-D",
+        "--debug",
+        action="store_true",
+        help="Enable debug mode",
+    )
+    parser.add_argument(
+    "--env",
+        help="Path to the environment file",
+        default=None,
+        type=Path
+    )
+    args = parser.parse_args()
+
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        for handler in logger.handlers:
+            handler.setLevel(logging.DEBUG)
+        logger.debug("Debug mode enabled via CLI argument")
+    if args.export_server:
+        global ENABLE_EXPORTER
+
+        logger.info("Export server enabled via CLI argument")
+        ENABLE_EXPORTER = True
+    if args.env:
+        env_path = args.env
+        env_path = env_path.expanduser().resolve()
+        try:
+            import dotenv
+            loaded_any = dotenv.load_dotenv(env_path, override=True)
+        except ImportError:
+            logger.error("dotenv module is not installed. Please install it with 'pip install python-dotenv'")
+        except Exception as e:
+            logger.error(f"Failed to read environment file {env_path}: {e}")
+        else:
+            if not env_path.exists():
+                logger.error(f"Environment file {env_path} does not exist")
+            if loaded_any:
+                logger.info(f"Environment variables loaded from {env_path}")
+                g.reload_env()
+            else:
+                logger.warning(f"No environment variables were loaded from {env_path}")
+
 
 def main():
-
     lp = "main:"
     parse_cli()
     if CYNC_DEBUG:
