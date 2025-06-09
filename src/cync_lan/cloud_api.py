@@ -94,8 +94,6 @@ class CyncCloudAPI:
             logger.debug(f"{self.lp}:_check_session: Creating new aiohttp ClientSession")
             self.http_session = aiohttp.ClientSession()
             await self.http_session.__aenter__()
-        else:
-            logger.debug(f"{self.lp}:_check_session: Using existing aiohttp ClientSession")
 
     async def read_token_cache(self) -> Optional[ComputedTokenData]:
         """
@@ -182,7 +180,7 @@ class CyncCloudAPI:
             "two_factor": otp_code,
             "resource": ''.join(random.choices(string.ascii_lowercase, k=16)),
         }
-        logger.debug(f"{lp} Sending OTP code: {otp_code} to Cync Cloud API for authentication\n\n{auth_data=}\n\n")
+        logger.debug(f"{lp} Sending OTP code: {otp_code} to Cync Cloud API for authentication")
 
         sesh = self.http_session
         try:
@@ -200,7 +198,6 @@ class CyncCloudAPI:
             logger.error(f"Failed to get key from JSON: {ke}")
             return False
         else:
-            logger.info(f"Two-Factor auth response: \n{token_data}")
             # add issued_at to the token data for computing the expiration datetime
             token_data["issued_at"] = iat
             computed_token = ComputedTokenData(**token_data)
