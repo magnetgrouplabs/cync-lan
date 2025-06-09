@@ -65,19 +65,36 @@ CYNC_SRV_HOST = os.environ.get("CYNC_SRV_HOST", "0.0.0.0")
 CYNC_ACCOUNT_LANGUAGE: str = os.environ.get("CYNC_ACCOUNT_LANGUAGE", "en-us").casefold()
 CYNC_ACCOUNT_USERNAME: str = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
 CYNC_ACCOUNT_PASSWORD: str = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
-CYNC_MQTT_CONN_DELAY: int = int(os.environ.get("CYNC_MQTT_CONN_DELAY", 10))
-CYNC_CMD_BROADCASTS: int = int(os.environ.get("CYNC_CMD_BROADCASTS", 2))
-CYNC_MAX_TCP_CONN: int = int(os.environ.get("CYNC_MAX_TCP_CONN", 8))
+
+CYNC_CMD_BROADCASTS: int = os.environ.get("CYNC_CMD_BROADCASTS", 2)
+if not CYNC_CMD_BROADCASTS:
+    CYNC_CMD_BROADCASTS = 2
+else:
+    try:
+        CYNC_CMD_BROADCASTS = int(CYNC_CMD_BROADCASTS)
+    except ValueError:
+        CYNC_CMD_BROADCASTS = 2
+CYNC_MAX_TCP_CONN: int = os.environ.get("CYNC_MAX_TCP_CONN", 8)
+if not CYNC_MAX_TCP_CONN:
+    CYNC_MAX_TCP_CONN = 8
+else:
+    try:
+        CYNC_MAX_TCP_CONN = int(CYNC_MAX_TCP_CONN)
+    except ValueError:
+        CYNC_MAX_TCP_CONN = 8
 CYNC_TCP_WHITELIST: Optional[Union[str, List[Optional[str]]]] = os.environ.get("CYNC_TCP_WHITELIST")
+
 CYNC_MQTT_HOST = os.environ.get("CYNC_MQTT_HOST", "homeassistant.local")
 CYNC_MQTT_PORT = os.environ.get("CYNC_MQTT_PORT", 1883)
 CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
 CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
-CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan_NEW")
+CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan")
 CYNC_HASS_TOPIC = os.environ.get("CYNC_HASS_TOPIC", "homeassistant")
 CYNC_HASS_STATUS_TOPIC = os.environ.get("CYNC_HASS_STATUS_TOPIC", "status")
 CYNC_HASS_BIRTH_MSG = os.environ.get("CYNC_HASS_BIRTH_MSG", "online")
 CYNC_HASS_WILL_MSG = os.environ.get("CYNC_HASS_WILL_MSG", "offline")
+CYNC_MQTT_CONN_DELAY: int = int(os.environ.get("CYNC_MQTT_CONN_DELAY", 10))
+
 CYNC_RAW = os.environ.get("CYNC_RAW_DEBUG", "0").casefold() in YES_ANSWER
 CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 
