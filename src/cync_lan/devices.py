@@ -1,18 +1,13 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 import random
 import time
 import datetime
-from typing import Optional, Union, List, Dict, Coroutine, TYPE_CHECKING
+from typing import Optional, Union, List, Dict, Coroutine
 
 from cync_lan.const import *
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
-from cync_lan.structs import GlobalObject
-
-if TYPE_CHECKING:
-    from cync_lan.structs import Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
+from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
         PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
 
 __all__ = [
