@@ -14,7 +14,6 @@ from typing import Optional, List, Tuple
 import yaml
 
 from cync_lan.const import *
-from cync_lan.devices import CyncDevice
 from cync_lan.structs import GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -185,6 +184,8 @@ async def parse_config(cfg_file: Path):
     Exported config created by scraping cloud API. Devices must already be added to your Cync account.
     If you add new or delete existing devices, you will need to re-export the config.
     """
+    from cync_lan.devices import CyncDevice
+
     lp = f"parse_config:"
     logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.as_posix()}")
     try:
