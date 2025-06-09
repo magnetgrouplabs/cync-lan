@@ -32,7 +32,6 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 g = GlobalObject()
-cync: Optional["CyncLAN"] = None
 SHUTTING_DOWN: bool = False
 global_tasks = []
 
@@ -324,7 +323,7 @@ def main():
 
     g.cync_lan = CyncLAN()
     try:
-        asyncio.get_event_loop().run_until_complete(cync.start())
+        asyncio.get_event_loop().run_until_complete(g.cync_lan.start())
     except KeyboardInterrupt:
         logger.info(f"{lp} Caught KeyboardInterrupt, exiting...")
     except Exception as e:
