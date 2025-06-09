@@ -49,6 +49,7 @@ class nCyncServer:
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.host = CYNC_SRV_HOST
         self.port = CYNC_PORT
+        g.reload_env()
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = (
@@ -152,7 +153,7 @@ class nCyncServer:
 
     async def start(self):
         lp = f"{self.lp}start:"
-        logger.debug(f"{lp} Starting, creating SSL context...")
+        logger.debug(f"{lp} Starting, creating SSL context - key: {self.key_file}, cert: {self.cert_file}")
         try:
             self.ssl_context = await self.create_ssl_context()
             self._server = await asyncio.start_server(
