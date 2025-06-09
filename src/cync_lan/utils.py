@@ -149,7 +149,7 @@ def signal_handler(signum) -> None:
     Handle signals for graceful shutdown.
     """
 
-    logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum}), {_msg}")
+    logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum})")
     if g:
         # instead of calling self.close(), which would add the close tasks to global_tasks
         # we call stop() on the services directly, and cancel the self.start() tasks
