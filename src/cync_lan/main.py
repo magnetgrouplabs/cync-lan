@@ -223,7 +223,6 @@ class CyncLAN:
                     mac=btmac,
                     wifi_mac=wmac,
                 )
-                self._ids_from_config.append(new_device.hass_id)
                 for attrset in (
                     "is_plug",
                     "supports_temperature",
