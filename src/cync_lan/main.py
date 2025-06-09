@@ -63,13 +63,10 @@ class CyncLAN:
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
-            logger.info(f"ASYNC TASK START FOR Export server...")
             tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
         g.mqtt_client = MQTTClient()
-        logger.info(f"ASYNC TASK START FOR MQTT client...")
         tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
         g.tasks.extend(tasks)
-        logger.info(f"{lp} Starting CyncLAN stack using asyncio.gather() with {len(tasks)} tasks...")
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
