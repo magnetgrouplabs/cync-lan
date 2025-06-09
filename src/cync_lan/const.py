@@ -6,10 +6,10 @@ import tzlocal
 
 from cync_lan import __version__
 
-SANITY_CHECK = 'fingers_crossed_dude'
 __all__ = [
+    "CYNC_UUID_PATH",
+    "LOCAL_TZ",
     "PERSISTENT_BASE_DIR",
-    "SANITY_CHECK",
     "ENABLE_EXPORTER",
     "CYNC_BASE_DIR",
     "CYNC_STATIC_DIR",

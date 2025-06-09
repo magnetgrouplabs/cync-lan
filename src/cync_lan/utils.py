@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import asyncio
 import datetime
@@ -16,11 +14,11 @@ from typing import Optional, List, Tuple
 import yaml
 
 from cync_lan.const import *
-from cync_lan.const import CYNC_UUID_PATH, LOCAL_TZ
 from cync_lan.devices import CyncDevice
-from cync_lan.main import logger, g
+from cync_lan.structs import GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
+g = GlobalObject()
 
 def send_signal(signal_num: int):
     """

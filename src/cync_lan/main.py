@@ -44,7 +44,7 @@ class CyncLAN:
         is_first_run()
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         g.loop = asyncio.get_event_loop()
-        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION} [SANITY CHECK: {SANITY_CHECK}]) stack initializing, setting up event loop signal handlers...")
+        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, setting up event loop signal handlers...")
         g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
         g.loop.add_signal_handler(signal.SIGTERM, partial(signal_handler, signal.SIGTERM))
 
