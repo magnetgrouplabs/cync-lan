@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Optional
 
 import uvloop
+import yaml
 
 from cync_lan.cloud_api import CyncCloudAPI
 from cync_lan.const import *
 from cync_lan.const import PERSISTENT_BASE_DIR
+from cync_lan.devices import CyncDevice
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
@@ -157,6 +159,82 @@ class CyncLAN:
             await asyncio.gather(*tasks, return_exceptions=True)
         global_tasks.extend(tasks)
         logger.info(f"{lp} All services stopped successfully.")
+
+    def parse_config(self, cfg_file: Path):
+        """Parse the exported Cync config file and create devices from it.
+
+        Exported config created by scraping cloud API. Devices must already be added to your Cync account.
+        If you add new or delete existing devices, you will need to re-export the config.
+        """
+        lp = f"{self.lp}parse_config:"
+        logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.expanduser().resolve().as_posix()}")
+        try:
+            raw_config = yaml.safe_load(cfg_file.read_text())
+        except Exception as e:
+            logger.error(f"{lp} Error reading config file: {e}", exc_info=True)
+            raise e
+
+        devices = {}
+        # parse homes and devices
+        for cync_home_name, home_cfg in raw_config["account data"].items():
+            home_id = home_cfg["id"]
+            if "devices" not in home_cfg:
+                logger.warning(
+                    f"{self.lp} No devices found in config for: {cync_home_name} (ID: {home_id}), skipping..."
+                )
+                continue
+            # Create devices
+            for cync_id, cync_device in home_cfg["devices"].items():
+                cync_device: dict
+                device_name = (
+                    cync_device["name"]
+                    if "name" in cync_device
+                    else f"device_{cync_id}"
+                )
+                if "enabled" in cync_device:
+                    if cync_device["enabled"] is False:
+                        logger.debug(
+                            f"{self.lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
+                        )
+                        continue
+                fw_version = cync_device["fw"] if "fw" in cync_device else None
+                wmac = None
+                btmac = None
+                # 'mac': 26616350814, 'wifi_mac': 26616350815
+                if 'mac' in cync_device:
+                    btmac = cync_device['mac']
+                    if btmac:
+                        if isinstance(btmac, int):
+                            logger.warning(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'mac' is somehow an int -> {btmac}, please quote the mac address to force it to a string in the config file")
+
+                if 'wifi_mac' in cync_device:
+                    wmac = cync_device['wifi_mac']
+                    if wmac:
+                        if isinstance(wmac, int):
+                            logger.debug(f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> {wmac}, please quote the mac address to force it to a string in the config file")
+
+                new_device = CyncDevice(
+                    name=device_name,
+                    cync_id=cync_id,
+                    fw_version=fw_version,
+                    home_id=home_id,
+                    mac=btmac,
+                    wifi_mac=wmac,
+                )
+                self._ids_from_config.append(new_device.hass_id)
+                for attrset in (
+                    "is_plug",
+                    "supports_temperature",
+                    "supports_rgb",
+                    "ip",
+                    "type",
+                ):
+                    if attrset in cync_device:
+                        setattr(new_device, attrset, cync_device[attrset])
+                devices[cync_id] = new_device
+                # logger.debug(f"{self.lp} Created device (hass_id: {new_device.hass_id}) (home_id: {new_device.home_id}) (device_id: {new_device.id}): {new_device}")
+
+        return devices
 
 def check_python_version():
     if sys.version_info >= (3, 9):
