@@ -11,6 +11,7 @@ import yaml
 from pydantic import BaseModel, computed_field
 
 from cync_lan.const import *
+from cync_lan.const import PERSISTENT_BASE_DIR
 from cync_lan.devices import CyncDevice
 from cync_lan.structs import GlobalObject
 
@@ -345,7 +346,7 @@ class CyncCloudAPI:
         lp = f"{self.lp}:export config:"
         mesh_conf = {}
         # What we get from the Cync cloud API
-        raw_file_out = "./raw_mesh.cync"
+        raw_file_out = f"{PERSISTENT_BASE_DIR}/raw_mesh.cync"
         try:
             with open(raw_file_out, "w") as _f:
                 _f.write(yaml.dump(mesh_info))
