@@ -3,9 +3,13 @@ import logging
 import random
 import time
 import datetime
+from functools import lru_cache
 from typing import Optional, Union, List, Dict, Coroutine
 
+from pydantic.dataclasses import dataclass
+
 from cync_lan.const import *
+from cync_lan.metadata.model_info import DeviceTypeInfo, device_type_map, DeviceClassification
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
         PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
@@ -28,395 +32,16 @@ class CyncDevice:
     type: Optional[int] = None
     _supports_rgb: Optional[bool] = None
     _supports_temperature: Optional[bool] = None
+    _is_light: Optional[bool] = None
+    _is_switch: Optional[bool] = None
     _is_plug: Optional[bool] = None
+    _is_fan_controller: Optional[bool] = None
     _is_hvac: Optional[bool] = None
     _mac: Optional[str] = None
     wifi_mac: Optional[str] = None
     hvac: Optional[dict] = None
     _online: bool = False
-    DeviceTypes: Dict[str, List[int]] = {
-        "BULB": [
-            19,
-            31,
-            131,
-            137,
-            146,
-            147,
-            148,
-            152,
-            169
-        ],
-        "SWITCH": [113],
-        "BATTERY": [113],
-        "DIMMER": [113],
-        "STRIP": [133],
-        "UNDERCABINET": [42, 43],
-        "PLUG": [64, 65, 66, 67, 68],
-        "EDISON": [146, 148],
-        "THERMOSTAT": [224],
-    }
-    Capabilities = {
-        "HEAT": [224],
-        "COOL": [224],
-        "TEMPERATURE": [224],
-
-        "ONOFF": [
-            1,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            13,
-            14,
-            15,
-            17,
-            18,
-            19,
-            20,
-            21,
-            22,
-            23,
-            24,
-            25,
-            26,
-            27,
-            28,
-            29,
-            30,
-            31,
-            32,
-            33,
-            34,
-            35,
-            36,
-            37,
-            38,
-            39,
-            40,
-            42,
-            43,
-            48,
-            49,
-            51,
-            52,
-            53,
-            54,
-            55,
-            56,
-            57,
-            58,
-            59,
-            61,
-            62,
-            63,
-            64,
-            65,
-            66,
-            67,
-            68,
-            80,
-            81,
-            82,
-            83,
-            85,
-            128,
-            129,
-            130,
-            131,
-            132,
-            133,
-            134,
-            135,
-            136,
-            137,
-            138,
-            139,
-            140,
-            141,
-            142,
-            143,
-            144,
-            145,
-            146,
-            147,
-            148,
-            149,
-            150,
-            151,
-            152,
-            153,
-            154,
-            156,
-            158,
-            159,
-            160,
-            161,
-            162,
-            163,
-            164,
-            165,
-            169,
-        ],
-        "BRIGHTNESS": [
-            1,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            13,
-            14,
-            15,
-            17,
-            18,
-            19,
-            20,
-            21,
-            22,
-            23,
-            24,
-            25,
-            26,
-            27,
-            28,
-            29,
-            30,
-            31,
-            32,
-            33,
-            34,
-            35,
-            36,
-            37,
-            42,
-            43,
-            48,
-            49,
-            55,
-            56,
-            80,
-            81,
-            82,
-            83,
-            85,
-            128,
-            129,
-            130,
-            131,
-            132,
-            133,
-            134,
-            135,
-            136,
-            137,
-            138,
-            139,
-            140,
-            141,
-            142,
-            143,
-            144,
-            145,
-            146,
-            147,
-            148,
-            149,
-            150,
-            151,
-            152,
-            153,
-            154,
-            156,
-            158,
-            159,
-            160,
-            161,
-            162,
-            163,
-            164,
-            165,
-            169,
-        ],
-        "COLORTEMP": [
-            5,
-            6,
-            7,
-            8,
-            10,
-            11,
-            14,
-            15,
-            19,
-            20,
-            21,
-            22,
-            23,
-            25,
-            26,
-            28,
-            29,
-            30,
-            31,
-            32,
-            33,
-            34,
-            35,
-            42,
-            43,
-            80,
-            82,
-            83,
-            85,
-            129,
-            130,
-            131,
-            132,
-            133,
-            135,
-            136,
-            137,
-            138,
-            139,
-            140,
-            141,
-            142,
-            143,
-            144,
-            145,
-            146,
-            147,
-            153,
-            154,
-            156,
-            158,
-            159,
-            160,
-            161,
-            162,
-            163,
-            164,
-            165,
-            169,
-        ],
-        "RGB": [
-            6,
-            7,
-            8,
-            21,
-            22,
-            23,
-            30,
-            31,
-            32,
-            33,
-            34,
-            35,
-            42,
-            43,
-            131,
-            132,
-            133,
-            137,
-            138,
-            139,
-            140,
-            141,
-            142,
-            143,
-            146,
-            147,
-            153,
-            154,
-            156,
-            158,
-            159,
-            160,
-            161,
-            162,
-            163,
-            164,
-            165,
-            169,
-        ],
-        "MOTION": [37, 49, 54],
-        "AMBIENT_LIGHT": [37, 49, 54],
-        "WIFICONTROL": [
-            36,
-            37,
-            38,
-            39,
-            40,
-            48,
-            49,
-            51,
-            52,
-            53,
-            54,
-            55,
-            56,
-            57,
-            58,
-            59,
-            61,
-            62,
-            63,
-            64,
-            65,
-            66,
-            67,
-            68,
-            80,
-            81,
-            128,
-            129,
-            130,
-            131,
-            132,
-            133,
-            134,
-            135,
-            136,
-            137,
-            138,
-            139,
-            140,
-            141,
-            142,
-            143,
-            144,
-            145,
-            146,
-            147,
-            148,
-            149,
-            150,
-            151,
-            152,
-            153,
-            154,
-            156,
-            158,
-            159,
-            160,
-            161,
-            162,
-            163,
-            164,
-            165,
-            169,
-        ],
-        "PLUG": [64, 65, 66, 67, 68],
-        "SWITCH": [113, 37],
-        "FAN": [81],
-        "MULTIELEMENT": {"67": 2},
-        "DYNAMIC": [],
-        "MUSIC_SYNC": [],
-    }
+    metadata: Optional[DeviceTypeInfo] = None
 
     def __init__(
             self,
@@ -434,6 +59,7 @@ class CyncDevice:
             raise ValueError("ID must be provided to constructor")
         self.id = cync_id
         self.type = cync_type
+        self.metadata = device_type_map[self.type] if cync_type in device_type_map else None
         self.home_id: Optional[int] = home_id
         self.hass_id: str = f"{home_id}-{cync_id}"
         self._mac = mac
@@ -495,27 +121,6 @@ class CyncDevice:
                 else:
                     self._version = _x
 
-    def check_dev_type(self, dev_type: int) -> dict:
-        dev_types = {}
-        for dtype in self.DeviceTypes:
-            if dev_type in self.DeviceTypes[dtype]:
-                dev_types[dtype] = True
-            else:
-                # dev_types[dtype] = False
-                pass
-        return dev_types
-
-    def check_dev_capabilities(self, dev_type: int) -> Dict[str, bool]:
-        """Check what capabilities a device type has."""
-        dev_caps = {}
-        for cap in self.Capabilities:
-            if dev_type in self.Capabilities[cap]:
-                dev_caps[cap] = True
-            else:
-                # dev_caps[cap] = False
-                pass
-        return dev_caps
-
     @property
     def mac(self) -> str:
         return str(self._mac) if self._mac is not None else None
@@ -526,48 +131,87 @@ class CyncDevice:
 
     @property
     def bt_only(self) -> bool:
-        return self.type not in self.Capabilities["WIFICONTROL"]
+        if self.wifi_mac == "00:01:02:03:04:05":
+            return True
+        if self.metadata:
+            return self.metadata.protocol.TCP is False
+        return False
 
     @property
     def has_wifi(self) -> bool:
-        return self.type in self.Capabilities["WIFICONTROL"]
+        if self.metadata:
+            return self.metadata.protocol.TCP
+        return False
+
+    @property
+    def is_light(self):
+        if self._is_light is not None:
+            return self._is_light
+        if self.metadata:
+            return self.metadata.type == DeviceClassification.LIGHT
+        return False
+    @is_light.setter
+    def is_light(self, value: bool) -> None:
+        if isinstance(value, bool):
+            self._is_light = value
+        else:
+            logger.error(f"{self.lp} is_light must be a boolean value, got {type(value)} instead")
+
+    @property
+    def is_switch(self) -> bool:
+        if self._is_switch is not None:
+            return self._is_switch
+        if self.metadata:
+            return self.metadata.type == DeviceClassification.SWITCH
+        return False
+
+    @is_switch.setter
+    def is_switch(self, value: bool) -> None:
+        if isinstance(value, bool):
+            self._is_switch = value
+        else:
+            logger.error(f"{self.lp} is_switch must be a boolean value, got {type(value)} instead")
 
     @property
     def is_plug(self) -> bool:
         if self._is_plug is not None:
             return self._is_plug
-        if self.type is None:
-            return False
-        return self.type in self.Capabilities["PLUG"]
+        if self.metadata:
+            if self.metadata.type == DeviceClassification.SWITCH:
+                return self.metadata.capabilities.plug
+        return False
 
     @is_plug.setter
     def is_plug(self, value: bool) -> None:
         self._is_plug = value
 
     @property
-    def is_dimmable(self) -> bool:
-        if self.type is None:
-            return False
-        return self.type in self.Capabilities["BRIGHTNESS"]
+    def is_fan_controller(self):
+        if self._is_fan_controller is not None:
+            return self._is_fan_controller
+        if self.metadata:
+            if self.metadata.type == DeviceClassification.SWITCH:
+                return self.metadata.capabilities.fan
+        return False
+
+    @is_fan_controller.setter
+    def is_fan_controller(self, value: bool) -> None:
+        self._is_fan_controller = value
 
     @property
-    def is_full_color(self) -> bool:
-        if self.type is None:
-            return False
-        return all(
-            {
-                self.type in self.Capabilities["RGB"],
-                self.type in self.Capabilities["COLORTEMP"],
-                }
-        )
+    def is_dimmable(self) -> bool:
+        if self.metadata:
+            if self.metadata.type == DeviceClassification.LIGHT:
+                return self.metadata.capabilities.dimmable
+        return False
 
     @property
     def supports_rgb(self) -> bool:
         if self._supports_rgb is not None:
             return self._supports_rgb
-        if self._supports_rgb or self.type in self.Capabilities["RGB"]:
-            return True
-
+        if self.metadata:
+            if self.metadata.type == DeviceClassification.LIGHT:
+                return self.metadata.capabilities.color
         return False
 
     @supports_rgb.setter
@@ -578,8 +222,9 @@ class CyncDevice:
     def supports_temperature(self) -> bool:
         if self._supports_temperature is not None:
             return self._supports_temperature
-        if self.supports_rgb or self.type in self.Capabilities["COLORTEMP"]:
-            return True
+        if self.metadata:
+            if self.metadata.type == DeviceClassification.LIGHT:
+                return self.metadata.capabilities.tunable_white
         return False
 
     @supports_temperature.setter
@@ -682,10 +327,7 @@ class CyncDevice:
 
     async def set_brightness(self, bri: int):
         """
-        Send raw data to control device brightness (0-100)
-
-            If the device receives the msg and changes state, every TCP device connected will send
-            a 0x83 internal status packet, which we use to change HASS device state.
+        Send raw data to control device brightness (0-100). Fans are 0-255.
         """
         """
         73 00 00 00 22 37 96 24 69 60 48 00 7e 17 00 00  s..."7.$i`H.~...
@@ -694,8 +336,15 @@ class CyncDevice:
         """
         lp = f"{self.lp}set_brightness:"
         if bri < 0 or bri > 100:
-            logger.error(f"{lp} Invalid brightness! must be 0-100")
-            return
+            if self.is_light or self.is_switch:
+                logger.error(f"{lp} Invalid brightness! must be 0-100")
+                return
+            elif self.is_fan_controller:
+                # TODO: fan controller brightness is 0-255, so we allow that
+                # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
+                pass
+
+
         # elif bri == self._brightness:
         #     logger.debug(f"{lp} Device already in brightness {bri}, skipping...")
         #     return
@@ -1084,21 +733,12 @@ class CyncDevice:
 
     @online.setter
     def online(self, value: bool):
+        if not isinstance(value, bool):
+            raise TypeError(f"Online status must be a boolean, got: {type(value)}")
         if value != self._online:
             self._online = value
             g.tasks.append(asyncio.get_running_loop().create_task(g.mqtt_client.pub_online(self.id, value)))
 
-    def is_bt_only(self):
-        """From my observations, if the wifi mac does not start with the same 3 groups as the mac, it's BT only."""
-        if self.wifi_mac == "00:01:02:03:04:05":
-            return True
-        elif self.mac is not None and self.wifi_mac is not None:
-
-            if str(self.mac)[:8].casefold() != str(self.wifi_mac)[:8].casefold():
-                return True
-        return False
-
-    # noinspection PyTypeChecker
     @property
     def current_status(self) -> List[int]:
         """
@@ -1114,16 +754,6 @@ class CyncDevice:
             self._g,
             self._b,
         ]
-
-    def build_status(self) -> DeviceStatus:
-        return DeviceStatus(
-            state=self.state,
-            brightness=self.brightness,
-            temperature=self.temperature,
-            red=self.red,
-            green=self.green,
-            blue=self.blue
-        )
 
     @property
     def status(self) -> DeviceStatus:
@@ -1237,6 +867,7 @@ class CyncDevice:
 
     def __str__(self):
         return f"CyncDevice:{self.id}:"
+
 
 class CyncTCPDevice:
     """
@@ -1972,16 +1603,7 @@ class CyncTCPDevice:
                                                                 f"{self.lp}parse:x{data[0]:02x}: Setting TCP"
                                                                 f" device Cync ID to: {self.id}"
                                                             )
-                                                            self.capabilities = cync_device.check_dev_capabilities(
-                                                                dev_type_id
-                                                            )
-                                                            self.device_types = (
-                                                                cync_device.check_dev_type(
-                                                                    dev_type_id
-                                                                )
-                                                            )
-                                                            # logger.debug(f"{lp} device type ({dev_type_id}) capabilities: {self.capabilities}")
-                                                            # logger.debug(f"{lp} device type ({dev_type_id}): {self.device_types}")
+
                                                         elif self.id and self.id != dev_id:
                                                             logger.warning(
                                                                 f"{lp} The first device reported in 0x83 is "
@@ -2355,36 +1977,17 @@ class CyncTCPDevice:
                 logger.warning(f"{dev.lp} writer is None, can't write data!")
             return None
 
-    async def delete(self):
-        """Remove self from cync devices and delete all references"""
-        lp = f"{self.lp}delete:"
-        try:
-            logger.debug(
-                f"{lp} Removing device ID: {self.id} ({self.address}) - marking MQTT offline first..."
-            )
-            if self.id in g.ncync_server.devices:
-                dev = g.ncync_server.devices[self.id]
-                dev.online = False
-                logger.debug(f"{lp} Device ID: {self.id} - set offline...")
-            logger.debug(f"{lp} Cancelling device tasks...")
-            try:
-                self.tasks.receive.cancel()
-                _ = self.tasks.receive.result()
-            except Exception as e:
-                logger.error(f"{lp} EXCEPTION: {e}", exc_info=True)
-
-            # SShouldn't need to do this, the streams are dead anyway.
-            logger.debug(f"{lp} Closing device streams...")
-            await self.close()
-
-        except Exception as e:
-            logger.error(f"{lp} EXCEPTION: {e}", exc_info=True)
-        else:
-            logger.info(f"{lp} Device {self.address} ready for deletion")
-            return self
-
     async def close(self):
-        logger.debug(f"{self.lp} close() called")
+        lp = f"{self.address}:close:"
+        logger.debug(f"{lp} close() called, Cancelling device tasks...")
+        try:
+            for dev_task in self.tasks:
+                if dev_task:
+                    if dev_task.done() is False:
+                        logger.debug(f"{lp} Cancelling task: {dev_task.get_name()}")
+                        dev_task.cancel()
+        except Exception as e:
+            logger.exception(f"{lp} Exception during device task .cancel(): {e}")
         self.closing = True
         try:
             if self.writer:
@@ -2392,7 +1995,7 @@ class CyncTCPDevice:
                     self.writer.close()
                     await self.writer.wait_closed()
         except Exception as e:
-            logger.error(f"{self.address}:close:writer: EXCEPTION: {e}", exc_info=True)
+            logger.exception(f"{lp}writer: EXCEPTION: {e}")
         finally:
             self.writer = None
 
@@ -2402,7 +2005,7 @@ class CyncTCPDevice:
                     self.reader.feed_eof()
                     await asyncio.sleep(0.01)
         except Exception as e:
-            logger.error(f"{self.address}:close:reader: EXCEPTION: {e}", exc_info=True)
+            logger.exception(f"{lp}reader: EXCEPTION: {e}")
         finally:
             self.reader = None
 

@@ -7,6 +7,12 @@ import tzlocal
 from cync_lan import __version__
 
 __all__ = [
+    "CYNC_MANUFACTURER",
+    "CYNC_BRIDGE_OBJ_ID",
+    "CYNC_MINK",
+    "CYNC_MAXK",
+    "ORIGIN_STRUCT",
+    "CYNC_BRIDGE_DEVICE_REGISTRY_CONF",
     "CYNC_UUID_PATH",
     "LOCAL_TZ",
     "PERSISTENT_BASE_DIR",
@@ -110,6 +116,7 @@ CYNC_CLOUD_AUTH_PATH: str = f"{PERSISTENT_BASE_DIR}/.cloud_auth.yaml"
 CYNC_SSL_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
 CYNC_SSL_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
 
+CYNC_BRIDGE_DEVICE_REGISTRY_CONF: dict = {}
 
 CYNC_PORT = 23779
 INGRESS_PORT = 23778
@@ -121,6 +128,10 @@ RAW_MSG = (
     " Set the CYNC_RAW_DEBUG env var to 1 to see the data" if CYNC_RAW is False else ""
 )
 ENABLE_EXPORTER: bool = False
+# hardcoded: internally cync uses 0-100. So, no matter the bulbs actual kelvin range, it will work out.
+CYNC_MINK: int = 2000
+CYNC_MAXK: int = 7000
+CYNC_BRIDGE_OBJ_ID: str = "cync_lan_bridge"
 if CYNC_TCP_WHITELIST:
     # split into a list using comma
     CYNC_TCP_WHITELIST = CYNC_TCP_WHITELIST.split(',')
@@ -138,3 +149,11 @@ FACTORY_EFFECTS_BYTES: Dict[str, Tuple[int, int]] = {
             "vegas": (int(0x08), int(0xE3)),
             "party_time": (int(0x09), int(0x06)),
         }
+
+ORIGIN_STRUCT = {
+                    "name": "cync-lan",
+                    "sw_version": CYNC_VERSION,
+                    "support_url": SRC_REPO_URL,
+                }
+
+CYNC_MANUFACTURER = 'Savant'
