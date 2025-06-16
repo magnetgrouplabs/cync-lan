@@ -17,15 +17,7 @@ from cync_lan.const import *
 from cync_lan.structs import GlobalObject
 
 g = GlobalObject()
-
-
-logger = logging.getLogger(f"{CYNC_LOG_NAME}.exporter")
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
-handler.setFormatter(LOG_FORMATTER)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
-
+logger = logging.getLogger(CYNC_LOG_NAME)
 
 class OTPRequest(BaseModel):
     otp: int
