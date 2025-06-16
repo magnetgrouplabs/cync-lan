@@ -19,14 +19,10 @@ from cync_lan.structs import GlobalObject
 g = GlobalObject()
 
 
-logger = logging.getLogger("cync-lan.exporter")
-formatter = logging.Formatter(
-    "%(asctime)s.%(msecs)d %(levelname)s [%(module)s:%(lineno)d] > %(message)s",
-    "%m/%d/%y %H:%M:%S",
-)
+logger = logging.getLogger(f"{CYNC_LOG_NAME}.exporter")
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
-handler.setFormatter(formatter)
+handler.setFormatter(LOG_FORMATTER)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO if CYNC_DEBUG is False else logging.DEBUG)
 
@@ -132,7 +128,16 @@ class ExportServer:
     def __init__(self):
         self.app = app
         self.uvi_server = uvicorn.Server(
-            config=uvicorn.Config(app, host=CYNC_SRV_HOST, port=INGRESS_PORT, log_level="info")
+            config=uvicorn.Config(
+                app,
+                host=CYNC_SRV_HOST,
+                port=INGRESS_PORT,
+                log_config={
+                    "version": 1,
+                    "disable_existing_loggers": False,
+                },
+                log_level="info"
+                )
         )
 
     async def start(self):

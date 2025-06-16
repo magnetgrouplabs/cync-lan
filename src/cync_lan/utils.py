@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import hashlib
 import logging
 import os
 import signal
@@ -144,40 +143,8 @@ def parse_unbound_firmware_version(
     return firmware_type, firmware_version_int, firmware_str
 
 
-def md5sum(filepath: Path):
-    """Calculates the MD5 checksum of a file.
-
-    Args:
-        filepath (pathlib.Path): The path to the file.
-
-    Returns:
-        str: The hexadecimal representation of the MD5 checksum.
-             Returns None if the file cannot be opened.
-    """
-    lp = "CyncLAN:md5sum:"
-    try:
-        with filepath.open('rb') as f:
-            m = hashlib.md5()
-            while True:
-                data = f.read(4096)  # Read in chunks to handle large files
-                if not data:
-                    break
-                m.update(data)
-            return m.hexdigest()
-    except FileNotFoundError:
-        logger.warning(f"{lp} File not found at {filepath.expanduser().resolve().as_posix()}")
-        return None
-    except Exception as e:
-        logger.exception(f"{lp} An error occurred: {e}")
-        return None
-
-
 async def parse_config(cfg_file: Path):
-    """Parse the exported Cync config file and create devices from it.
-
-    Exported config created by scraping cloud API. Devices must already be added to your Cync account.
-    If you add new or delete existing devices, you will need to re-export the config.
-    """
+    """Parse the exported Cync device config file and create devices from it."""
     from cync_lan.devices import CyncDevice
 
     lp = f"parse_config:"
@@ -212,7 +179,15 @@ async def parse_config(cfg_file: Path):
                 else f"device_{cync_id}"
             )
             if "enabled" in cync_device:
-                if cync_device["enabled"] is False:
+                enabled = cync_device["enabled"]
+                if isinstance(enabled, str):
+                    enabled = enabled.casefold()
+                    if enabled not in YES_ANSWER:
+                        logger.debug(
+                            f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
+                        )
+                        continue
+                if isinstance(enabled, bool) and enabled is False:
                     logger.debug(
                         f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                     )
@@ -257,9 +232,18 @@ def check_python_version():
             "Python version 3.9 or higher REQUIRED! you have version: %s" % sys.version
         )
 
-def is_first_run():
+def check_for_uuid():
     """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""
-    lp = f"is_first_run:"
+    lp = f"check_uuid:"
+    # create dir for cync_mesh.yaml and variable data if it does not exist
+    persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
+    if not persistent_dir.exists():
+        try:
+            persistent_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"{lp} Created persistent directory: {persistent_dir.as_posix()}")
+        except Exception as e:
+            logger.error(f"{lp} Failed to create persistent directory: {e} - Exiting...")
+            sys.exit(1)
     uuid_file = Path(CYNC_UUID_PATH).expanduser().resolve()
     uuid_from_disk = ""
     create_uuid = False
@@ -275,7 +259,7 @@ def is_first_run():
                     logger.warning(f"{lp} Invalid UUID version in uuid.txt: {uuid_from_disk}")
                     create_uuid = True
                 else:
-                    logger.info(f"{lp} UUID found in {uuid_file.as_posix()} for the 'CyncLAN Bridge' device")
+                    logger.info(f"{lp} UUID found in {uuid_file.as_posix()} for the 'CyncLAN Bridge' MQTT device")
                     g.uuid = uuid_obj
 
         else:
@@ -285,7 +269,7 @@ def is_first_run():
         logger.error(f"{lp} PermissionError: Unable to read/write {CYNC_UUID_PATH}. Please check permissions.")
         create_uuid = True
     if create_uuid:
-        logger.debug(f"{lp} Creating and caching a new UUID to be used for the 'CyncLAN Bridge' device")
+        logger.debug(f"{lp} Creating and caching a new UUID to be used for the 'CyncLAN Bridge' MQTT device")
         g.uuid = uuid.uuid4()
         with open(uuid_file, "w") as f:
             f.write(str(g.uuid))

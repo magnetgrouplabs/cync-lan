@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional, List, Union, Tuple, Dict
 import zoneinfo
@@ -7,6 +8,8 @@ import tzlocal
 from cync_lan import __version__
 
 __all__ = [
+    "FOREIGN_LOG_FORMATTER",
+    "LOG_FORMATTER",
     "TCP_BLACKHOLE_DELAY",
     "CYNC_MANUFACTURER",
     "CYNC_BRIDGE_OBJ_ID",
@@ -60,9 +63,19 @@ __all__ = [
     "CYNC_ACCOUNT_LANGUAGE",
 ]
 
-YES_ANSWER = ("true", "1", "yes", "y", "t", 1)
+YES_ANSWER = ("true", "1", "yes", "y", "t", 1, 'on', 'o')
 LOCAL_TZ = zoneinfo.ZoneInfo(str(tzlocal.get_localzone()))
 CYNC_LOG_NAME: str = "cync_lan"
+
+LOG_FORMATTER = logging.Formatter(
+    "%(asctime)s.%(msecs)d %(levelname)s [%(module)s:%(lineno)d] > %(message)s",
+    "%m/%d/%y %H:%M:%S",
+)
+# adds logger name
+FOREIGN_LOG_FORMATTER = logging.Formatter(
+    "%(asctime)s.%(msecs)d %(levelname)s <%(name)s> [%(module)s:%(lineno)d] > %(message)s",
+    "%m/%d/%y %H:%M:%S",
+)
 CYNC_VERSION: str = __version__
 SRC_REPO_URL: str = "https://github.com/baudneo/cync-lan"
 CYNC_API_BASE: str = "https://api.gelighting.com/v2/"

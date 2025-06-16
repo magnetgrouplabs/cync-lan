@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 from json import JSONDecodeError
 from typing import Optional, Union, List, Coroutine, Dict
@@ -11,12 +10,14 @@ import aiomqtt
 from cync_lan.const import *
 from cync_lan.devices import CyncDevice
 from cync_lan.metadata.model_info import device_type_map
-from cync_lan.structs import DeviceStatus, GlobalObject
+from cync_lan.structs import DeviceStatus, GlobalObject, FanSpeed
 from cync_lan.utils import send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
 bridge_device_reg_struct = CYNC_BRIDGE_DEVICE_REGISTRY_CONF
+# Log all loggers in the logger manager
+# logging.getLogger().manager.loggerDict.keys()
 
 
 class MQTTClient:
@@ -89,6 +90,12 @@ class MQTTClient:
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
                         for device_id, device in g.ncync_server.devices.items():
+                            # if device.is_fan_controller:
+                            #     logger.debug(f"{lp} TESTING>>> Setting up fan controller for device: {device.name} (ID: {device.id})")
+                            #     # set device online for testing
+                            #     await self.pub_online(device.id, True)
+                            #     await device.set_brightness(50)  # set brightness to 50% for testing
+                            # else:
                             await self.pub_online(device_id, False)
                     elif itr > 1:
                         tasks = []
@@ -181,8 +188,6 @@ class MQTTClient:
                 logger.error(
                     f"{lp} Bad username or password, check your MQTT credentials (username: {g.env.mqtt_user})"
                 )
-                logger.info(f"ENV = \n\n{os.environ}\n\n")
-                logger.info(f"{g.env=}")
                 send_sigterm()
         else:
             self._connected = True
@@ -200,17 +205,15 @@ class MQTTClient:
             message: aiomqtt.message.Message
             topic = message.topic
             payload = message.payload
-            if not payload:
-                logger.debug(f"{lp} Received empty payload for topic: {topic} , skipping...")
+            if (payload is None) or (payload is not None and not payload):
+                logger.debug(f"{lp} Received empty/None payload ({payload}) for topic: {topic} , skipping...")
                 continue
             _topic = topic.value.split("/")
-            # Messages sent to the cync topic
             tasks = []
             device = None
             # cync_topic/(set|status)/device_id(/extra_data)?
             if _topic[0] == CYNC_TOPIC:
                 if _topic[1] == "set":
-                    logger.debug(f"{lp} Processing set command for topic: {topic} --> {payload}")
                     device_id = _topic[2]
                     if device_id == "bridge":
                         pass
@@ -224,58 +227,53 @@ class MQTTClient:
                             continue
                         device = g.ncync_server.devices[device_id]
                     extra_data = _topic[3:] if len(_topic) > 3 else None
-                    # button default payload = 'PRESS'
-                    # binary_sensor defaults: ON / OFF
                     if extra_data:
                         norm_pl = payload.decode().casefold()
-                        logger.debug(f"{lp} Extra data found: {extra_data}")
-                        # button: f"{self.topic}/set/bridge/restart"
+                        # logger.debug(f"{lp} Extra data found: {extra_data}")
                         if extra_data[0] == "restart":
                             if norm_pl == "press":
                                 logger.info(f"{lp} Restart button pressed! Restarting Cync LAN bridge (NOT IMPLEMENTED)...")
-                                # button: f"{self.topic}/set/bridge/start_export"
                         elif extra_data[0] == "start_export":
                             if norm_pl == "press":
                                 logger.info(f"{lp} Start Export button pressed! Starting Cync Export (NOT IMPLEMENTED)...")
-
                         elif extra_data[0] == "otp":
-                            # button: f"{self.topic}/set/bridge/otp/submit"
                             if extra_data[1] == "submit":
                                 logger.info(f"{lp} OTP submit button pressed! (NOT IMPLEMENTED)...")
-                                # number: f"{self.topic}/set/bridge/otp/input"
                             elif extra_data[1] == "input":
                                 logger.info(f"{lp} OTP input received: {norm_pl} (NOT IMPLEMENTED)...")
                         elif device and device.is_fan_controller:
-                            # FAN controller logic
-                            # entity_registry_struct["percentage_command_topic"] = "{0}/set/{1}/percentage".format(self.topic, device_uuid)
-                            # entity_registry_struct["percentage_state_topic"] = "{0}/status/{1}/percentage".format(self.topic, device_uuid)
-                            # entity_registry_struct["preset_modes"] = ["off", "low", "medium", "high", "max"]
-                            # entity_registry_struct["preset_mode_command_topic"] = "{0}/set/{1}/preset".format(self.topic, device_uuid)
-                            # entity_registry_struct["preset_mode_state_topic"] = "{0}/status/{1}/preset".format(self.topic, device_uuid)
                             if extra_data[0] == "percentage":
                                 percentage = int(norm_pl)
                                 if percentage == 0:
-                                    tasks.append(device.set_power(0))
-                                elif percentage <= 50:
+                                    tasks.append(device.set_brightness(0))
+                                elif percentage <= 25:
+                                    logger.debug(f"{lp} Fan percentage received: {percentage}, translated to: 'low' preset")
                                     tasks.append(device.set_brightness(50))
-                                elif percentage <= 128:
+                                elif percentage <= 50:
+                                    logger.debug(f"{lp} Fan percentage received: {percentage}, translated to: 'medium' preset")
                                     tasks.append(device.set_brightness(128))
-                                elif percentage <= 191:
+                                elif percentage <= 75:
+                                    logger.debug(f"{lp} Fan percentage received: {percentage}, translated to: 'high' preset")
                                     tasks.append(device.set_brightness(191))
-                                else:
+                                elif percentage <= 100:
+                                    logger.debug(f"{lp} Fan percentage received: {percentage}, translated to: 'max' preset")
                                     tasks.append(device.set_brightness(255))
-                            elif extra_data[0] == "preset_mode":
+                                else:
+                                    logger.warning(
+                                        f"{lp} Fan percentage received: {percentage} is out of range (0-100), skipping..."
+                                    )
+                            elif extra_data[0] == "preset":
                                 preset_mode = norm_pl
                                 if preset_mode == "off":
-                                    tasks.append(device.set_brightness(0))
+                                    tasks.append(device.set_fan_speed(FanSpeed.OFF))
                                 elif preset_mode == "low":
-                                    tasks.append(device.set_brightness(50))
+                                    tasks.append(device.set_fan_speed(FanSpeed.LOW))
                                 elif preset_mode == "medium":
-                                    tasks.append(device.set_brightness(128))
+                                    tasks.append(device.set_fan_speed(FanSpeed.MEDIUM))
                                 elif preset_mode == "high":
-                                    tasks.append(device.set_brightness(191))
+                                    tasks.append(device.set_fan_speed(FanSpeed.HIGH))
                                 elif preset_mode == "max":
-                                    tasks.append(device.set_brightness(255))
+                                    tasks.append(device.set_fan_speed(FanSpeed.MAX))
                                 else:
                                     logger.warning(
                                         f"{lp} Unknown preset mode: {preset_mode}, skipping..."
@@ -712,11 +710,6 @@ class MQTTClient:
                         _ = await self.client.publish(
                             tpc, json.dumps(entity_registry_struct).encode(), qos=0, retain=False
                         )
-                        if device.is_fan_controller:
-                            logger.debug(f"{lp} TESTING>>> Setting up fan controller for device: {device.name} (ID: {device.id})")
-                            # set device online for testing
-                            await self.pub_online(device.id, True)
-                            await device.set_brightness(50)  # set brightness to 50% for testing
 
                     except Exception as e:
                         logger.error(

@@ -5,6 +5,7 @@ import datetime
 import logging
 import os
 import time
+from enum import StrEnum
 from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
 import uvloop
@@ -367,3 +368,11 @@ class ComputedTokenData(RawTokenData):
     # def model_post_init(self, __context) -> None:
     #     if self.expires_in:
     #         self.expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=self.expires_in)
+
+
+class FanSpeed(StrEnum):
+    OFF = "off"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    MAX = "max"

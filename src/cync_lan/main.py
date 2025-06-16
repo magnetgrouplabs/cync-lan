@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import logging
-import os
 import signal
 import sys
 from functools import partial
@@ -16,23 +15,58 @@ from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
 from cync_lan.structs import GlobalObject
-from cync_lan.utils import signal_handler, parse_config, check_python_version, is_first_run
+from cync_lan.utils import signal_handler, parse_config, check_python_version, check_for_uuid, send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
-formatter = logging.Formatter(
-    "%(asctime)s.%(msecs)d %(levelname)s [%(module)s:%(lineno)d] > %(message)s",
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.INFO)
+stdout_handler.setFormatter(LOG_FORMATTER)
+foreign_handler = logging.StreamHandler(sys.stderr)
+foreign_handler.setLevel(logging.INFO)
+foreign_handler.setFormatter(FOREIGN_LOG_FORMATTER)
+uv_handler = logging.StreamHandler(sys.stdout)
+uv_handler.setLevel(logging.INFO)
+uv_handler.setFormatter(logging.Formatter(
+    "%(asctime)s.%(msecs)d %(levelname)s (%(name)s) > %(message)s",
     "%m/%d/%y %H:%M:%S",
-)
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+))
+logger.addHandler(stdout_handler)
 logger.setLevel(logging.INFO)
+# Control uvicorn logging, what a mess!
+uvi_logger = logging.getLogger("uvicorn")
+uvi_error_logger = logging.getLogger("uvicorn.error")
+uvi_access_logger = logging.getLogger("uvicorn.access")
+uvi_loggers = (uvi_logger, uvi_error_logger, uvi_access_logger)
+for _ul in uvi_loggers:
+    _ul.setLevel(logging.INFO)
+    _ul.propagate = False
+    _ul.addHandler(uv_handler)
+mqtt_logger = logging.getLogger("mqtt")
+# shut off the 'There are x pending publish calls.' from the mqtt logger (WARNING level)
+mqtt_logger.setLevel(logging.ERROR)
+mqtt_logger.propagate = False
+mqtt_logger.addHandler(foreign_handler)
+# logger.debug(f"{lp} Logging all registered loggers: {logging.getLogger().manager.loggerDict.keys()}")
 
 g = GlobalObject()
 
+def set_formatter_on_all_loggers(formatter):
+    logger_dict = logging.Logger.manager.loggerDict
+    for name in logger_dict:
+        if name.startswith(("uvicorn", "cync_lan", "mqtt")):
+            continue
+        logger = logging.getLogger(name)
+        logger.info(f"Setting formatter for logger: {name}")
+        if hasattr(logger, "handlers"):
+            logger.info(f"Logger {name} has handlers [{logger.handlers}], setting formatter.")
+            for handler in logger.handlers:
+                handler.setFormatter(formatter)
+                handler.setLevel(logging.DEBUG)
+
+
 class CyncLAN:
     lp: str = "CyncLAN:"
+    config_file: Optional[Path] = None
     _instance: Optional['CyncLAN'] = None
 
     def __new__(cls, *args, **kwargs):
@@ -42,32 +76,37 @@ class CyncLAN:
 
     def __init__(self):
         lp = f"{self.lp}init:"
-        is_first_run()
+        check_for_uuid()
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         g.loop = asyncio.get_event_loop()
-        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, setting up event loop signal handlers...")
+        logger.debug(
+            f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, "
+            f"setting up event loop signal handlers for SIGINT & SIGTERM..."
+        )
         g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
         g.loop.add_signal_handler(signal.SIGTERM, partial(signal_handler, signal.SIGTERM))
 
     async def start(self):
         """Start the Cync LAN server, MQTT client, and Export server."""
         lp = f"{self.lp}start:"
-        cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
+        self.config_file = cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
         tasks = []
         if cfg_file.exists():
             g.ncync_server = nCyncServer(await parse_config(cfg_file))
+            g.mqtt_client = MQTTClient()
+            tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
             tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
         else:
             logger.error(f"{lp} Cync config file not found at {cfg_file.as_posix()}. Please visit the ingress page and perform a device export.")
-            raise FileNotFoundError(f"Cync config file not found at {cfg_file.as_posix()}")
         if ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
             tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
-        g.mqtt_client = MQTTClient()
-        tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
+
         g.tasks.extend(tasks)
         try:
+            # the components start() methods have long running tasks of their own
+            # TODO: better way to control what tasks are doing what?
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             logger.exception(f"{lp} Exception occurred while starting services: {e}")
@@ -80,11 +119,11 @@ class CyncLAN:
         lp = f"{self.lp}stop:"
         # send sigterm
         logger.info(f"{lp} Bringing software stack down using SIGTERM...")
-        os.kill(os.getpid(), signal.SIGTERM)
+        send_sigterm()
 
 def parse_cli():
-
     parser = argparse.ArgumentParser(description="Cync LAN Server")
+
     parser.add_argument(
     "--export-server",
         "--enable-export-server",
@@ -146,17 +185,6 @@ def main():
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
     check_python_version()
-
-    # create dir for cync_mesh.yaml and uuid.txt if it does not exist
-    persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
-    if not persistent_dir.exists():
-        try:
-            persistent_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"{lp} Created persistent directory: {persistent_dir.as_posix()}")
-        except Exception as e:
-            logger.error(f"{lp} Failed to create persistent directory: {e}")
-            sys.exit(1)
-
     g.cync_lan = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(g.cync_lan.start())

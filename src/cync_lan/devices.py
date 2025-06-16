@@ -12,7 +12,7 @@ from cync_lan.const import *
 from cync_lan.metadata.model_info import DeviceTypeInfo, device_type_map, DeviceClassification
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
-        PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS
+        PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS, FanSpeed
 
 __all__ = [
     "CyncDevice",
@@ -324,6 +324,37 @@ class CyncDevice:
             f"{lp} Sent power state command, current: {self.state} - new: {state} to "
             f"TCP devices: {sent} in {elapsed:.5f} seconds"
         )
+    async def set_fan_speed(self, speed: FanSpeed) -> bool:
+        """
+            Translate a preset fan speed into a Cync brightness value and send it to the device.
+        :param speed:
+        :return:
+        """
+        lp = f"{self.lp}set_fan_speed:"
+        if not self.is_fan_controller:
+            logger.warning(f"{lp} Device '{self.name}' ({self.id}) is not a fan controller, cannot set fan speed.")
+            return False
+        try:
+            if speed == FanSpeed.OFF:
+                await self.set_brightness(0)
+            elif speed == FanSpeed.LOW:
+                await self.set_brightness(50)
+            elif speed == FanSpeed.MEDIUM:
+                await self.set_brightness(128)
+            elif speed == FanSpeed.HIGH:
+                await self.set_brightness(191)
+            elif speed == FanSpeed.MAX:
+                await self.set_brightness(255)
+            else:
+                logger.error(f"{self.lp} Invalid fan speed: {speed}, must be one of {list(FanSpeed)}")
+                return False
+        except asyncio.CancelledError as ce:
+            raise ce
+        except Exception as e:
+            logger.debug(f"{self.lp} Exception occurred while setting fan speed: {e}")
+            return False
+        else:
+            return True
 
     async def set_brightness(self, bri: int):
         """
@@ -336,12 +367,12 @@ class CyncDevice:
         """
         lp = f"{self.lp}set_brightness:"
         if bri < 0 or bri > 100:
-            if self.is_light or self.is_switch:
-                logger.error(f"{lp} Invalid brightness! must be 0-100")
-                return
-            elif self.is_fan_controller:
+            if self.is_fan_controller:
                 # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
                 pass
+            elif self.is_light or self.is_switch:
+                logger.error(f"{lp} Invalid brightness! must be 0-100")
+                return
 
 
         # elif bri == self._brightness:
@@ -800,8 +831,8 @@ class CyncDevice:
 
     @brightness.setter
     def brightness(self, value: int):
-        if value < 0 or value > 100:
-            raise ValueError(f"Brightness must be between 0 and 100, got: {value}")
+        if value < 0 or value > 255:
+            raise ValueError(f"Brightness must be between 0 and 255, got: {value}")
         if value != self._brightness:
             self._brightness = value
 
