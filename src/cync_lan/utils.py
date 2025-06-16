@@ -45,6 +45,35 @@ def send_sigterm():
     """
     send_signal(signal.SIGTERM)
 
+def signal_handler(signum) -> None:
+    """
+    Handle signals for graceful shutdown.
+    """
+
+    logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum})")
+    if g:
+        # instead of calling self.close(), which would add the close tasks to global_tasks
+        # we call stop() on the services directly, and cancel the self.start() tasks
+        # crucial to stop the MQTT connection retry loop
+        tasks = []
+        if g.ncync_server:
+            tasks.append(g.ncync_server.stop())
+        if g.mqtt_client:
+            tasks.append(g.mqtt_client.stop())
+        if g.export_server:
+            tasks.append(g.export_server.stop())
+        if g.cloud_api:
+            tasks.append(g.cloud_api.close())
+        if tasks:
+            asyncio.gather(*tasks, return_exceptions=True)
+        # cancel all not-done global_tasks (start and stop tasks)
+        if g.loop:
+            for task in g.tasks:
+                if not task.done():
+                    logger.debug(f"CyncLAN: Cancelling task: {task.get_name()} // {task.get_coro()=}")
+                    task.cancel()
+        g.tasks.clear()
+
 def bytes2list(byte_string: bytes) -> List[int]:
     """Convert a byte string to a list of integers"""
     # Interpret the byte string as a sequence of unsigned integers (little-endian)
@@ -143,36 +172,6 @@ def md5sum(filepath: Path):
         return None
 
 
-def signal_handler(signum) -> None:
-    """
-    Handle signals for graceful shutdown.
-    """
-
-    logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum})")
-    if g:
-        # instead of calling self.close(), which would add the close tasks to global_tasks
-        # we call stop() on the services directly, and cancel the self.start() tasks
-        # crucial to stop the MQTT connection retry loop
-        tasks = []
-        if g.ncync_server:
-            tasks.append(g.ncync_server.stop())
-        if g.mqtt_client:
-            tasks.append(g.mqtt_client.stop())
-        if g.export_server:
-            tasks.append(g.export_server.stop())
-        if g.cloud_api:
-            tasks.append(g.cloud_api.close())
-        if tasks:
-            asyncio.gather(*tasks, return_exceptions=True)
-        # cancel all not-done global_tasks (start and stop tasks)
-        if g.loop:
-            for task in g.tasks:
-                if not task.done():
-                    # logger.debug(f"CyncLAN: Cancelling task: {task.get_name()}")
-                    task.cancel()
-        g.tasks.clear()
-
-
 async def parse_config(cfg_file: Path):
     """Parse the exported Cync config file and create devices from it.
 
@@ -218,9 +217,10 @@ async def parse_config(cfg_file: Path):
                         f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                     )
                     continue
-            fw_version = cync_device["fw"] if "fw" in cync_device else None
+            fw_version = cync_device["fw"] if "fw" in cync_device and cync_device["fw"] else None
             wmac = None
             btmac = None
+            dev_type = cync_device["type"] if "type" in cync_device and cync_device["type"] else None
             # 'mac': 26616350814, 'wifi_mac': 26616350815
             if 'mac' in cync_device:
                 btmac = cync_device['mac']
@@ -241,16 +241,8 @@ async def parse_config(cfg_file: Path):
                 home_id=home_id,
                 mac=btmac,
                 wifi_mac=wmac,
+                cync_type=dev_type,
             )
-            for attrset in (
-                "is_plug",
-                "supports_temperature",
-                "supports_rgb",
-                "ip",
-                "type",
-            ):
-                if attrset in cync_device:
-                    setattr(new_device, attrset, cync_device[attrset])
             devices[cync_id] = new_device
             # logger.debug(f"{lp} Created device (hass_id: {new_device.hass_id}) (home_id: {new_device.home_id}) (device_id: {new_device.id}): {new_device}")
 
@@ -269,12 +261,6 @@ def is_first_run():
     """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""
     lp = f"is_first_run:"
     uuid_file = Path(CYNC_UUID_PATH).expanduser().resolve()
-
-    def write_uuid_to_disk(uuid_str: str):
-        with open(uuid_file, "w") as f:
-            f.write(uuid_str)
-        logger.info(f"{lp} UUID ({uuid_str}) written to disk: {uuid_file.as_posix()}")
-
     uuid_from_disk = ""
     create_uuid = False
     try:
@@ -284,11 +270,14 @@ def is_first_run():
             if not uuid_from_disk:
                 create_uuid = True
             else:
-                # check that it is a valid uuid4
                 uuid_obj = uuid.UUID(uuid_from_disk)
                 if uuid_obj.version != 4:
                     logger.warning(f"{lp} Invalid UUID version in uuid.txt: {uuid_from_disk}")
                     create_uuid = True
+                else:
+                    logger.info(f"{lp} UUID found in {uuid_file.as_posix()} for the 'CyncLAN Bridge' device")
+                    g.uuid = uuid_obj
+
         else:
             logger.info(f"{lp} No uuid.txt found in {uuid_file.parent.as_posix()}")
             create_uuid = True
@@ -296,11 +285,11 @@ def is_first_run():
         logger.error(f"{lp} PermissionError: Unable to read/write {CYNC_UUID_PATH}. Please check permissions.")
         create_uuid = True
     if create_uuid:
-        global CYNC_ADDON_UUID
-
-        logger.debug(f"{lp} Creating a new UUID to be used for the 'CyncLAN Controller/Bridge' device")
-        CYNC_ADDON_UUID = str(uuid.uuid4())
-        write_uuid_to_disk(CYNC_ADDON_UUID)
+        logger.debug(f"{lp} Creating and caching a new UUID to be used for the 'CyncLAN Bridge' device")
+        g.uuid = uuid.uuid4()
+        with open(uuid_file, "w") as f:
+            f.write(str(g.uuid))
+            logger.info(f"{lp} UUID written to disk: {uuid_file.as_posix()}")
 
 
 def utc_to_local(utc_dt: datetime.datetime) -> datetime.datetime:

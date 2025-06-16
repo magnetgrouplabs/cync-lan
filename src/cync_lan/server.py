@@ -25,6 +25,7 @@ class nCyncServer:
     devices: Dict[int, CyncDevice] = {}
     tcp_devices: Dict[str, Optional[CyncTCPDevice]] = {}
     shutting_down: bool = False
+    running: bool = False
     host: str
     port: int
     cert_file: Optional[str] = None
@@ -49,6 +50,52 @@ class nCyncServer:
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key
         self.loop: Union[asyncio.AbstractEventLoop, uvloop.Loop] = asyncio.get_event_loop()
+
+    async def remove_tcp_device(self, device: Union[CyncTCPDevice, str]) -> Optional[CyncTCPDevice]:
+        """
+        Remove a TCP device from the server's device list.
+        :param device: The CyncTCPDevice to remove.
+        """
+        dev = None
+        lp = f"{self.lp}remove_tcp_device:"
+        if isinstance(device, str):
+            # if device is a string, it is the address
+            if device in self.tcp_devices:
+                device = self.tcp_devices[device]
+
+        if isinstance(device, CyncTCPDevice):
+            if device.address in self.tcp_devices:
+                dev = self.tcp_devices.pop(device.address, None)
+                if dev is not None:
+                    logger.debug(f"{lp} Removed TCP device {device.address} from server.")
+                    # "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
+                    # TODO: publish the device removal
+                    if g.mqtt_client is not None:
+                        await g.mqtt_client.publish(
+                            f"{g.env.mqtt_topic}/status/bridge/tcp_devices/connected",
+                            str(len(self.tcp_devices)).encode(),
+                        )
+            else:
+                logger.warning(f"{lp} Device {device.address} not found in TCP devices.")
+        return dev
+
+    async def add_tcp_device(self, device: CyncTCPDevice):
+        """
+        Add a TCP device to the server's device list.
+        :param device: The CyncTCPDevice to add.
+        """
+        lp = f"{self.lp}add_tcp_device:"
+        self.tcp_devices[device.address] = device
+        logger.debug(f"{lp} Added TCP device {device.address} to server.")
+        # TODO: publish updated TCP devices connected
+        # "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
+        if g.mqtt_client is not None:
+            # publish the device removal
+            await g.mqtt_client.publish(
+                f"{g.env.mqtt_topic}/status/bridge/tcp_devices/connected",
+                str(len(self.tcp_devices)).encode(),
+            )
+
 
     async def create_ssl_context(self):
         # Allow the server to use a self-signed certificate
@@ -102,7 +149,7 @@ class nCyncServer:
         if connected_to_mesh == 0:
             # This usually happens when a device loses power/connection.
             # this device is gone, need to mark it offline.
-            # TODO: sometimes its a false report.
+            # FIXME: sometimes its a false report.
             if device.online:
                 device.online = False
                 logger.warning(
@@ -122,8 +169,7 @@ class nCyncServer:
             )
             # temp is 0-100, if > 100, RGB data has been sent, otherwise its on/off, brightness or temp data
             # technically 129 = effect in use, 254 = rgb data
-            # TODO: waiting for hass to merge a PR that shows a icon for a light that is in effect mode
-            #  currently, we send rgb 0,0,0 (black) as it stands out, to signal effect mode
+            #  to signify 'effect' mode: we send rgb 0,0,0 (black) as it stands out
             rgb_data = False
             if temp > 100:
                 rgb_data = True
@@ -146,7 +192,7 @@ class nCyncServer:
 
     async def start(self):
         lp = f"{self.lp}start:"
-        logger.debug(f"{lp} Starting, creating SSL context - key: {self.key_file}, cert: {self.cert_file}")
+        logger.debug(f"{lp} Creating SSL context - key: {self.key_file}, cert: {self.cert_file}")
         try:
             self.ssl_context = await self.create_ssl_context()
             self._server = await asyncio.start_server(
@@ -155,7 +201,10 @@ class nCyncServer:
                 port=self.port,
                 ssl=self.ssl_context,  # Pass the SSL context to enable SSL/TLS
             )
-
+        except asyncio.CancelledError as ce:
+            logger.debug(f"{lp} Server start cancelled: {ce}")
+            # propagate the cancellation
+            raise ce
         except Exception as e:
             logger.exception("%s Failed to start server: %s" % (lp, e))
         else:
@@ -163,38 +212,69 @@ class nCyncServer:
                 f"{lp} bound to {self.host}:{self.port} - Waiting for connections from Cync devices, if you dont"
                 f" see any, check your DNS redirection, VLAN and firewall settings."
             )
+            self.running = True
             try:
+                # "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
+                # TODO: publish the server running status
+                if g.mqtt_client:
+                    await g.mqtt_client.publish(
+                        f"{g.env.mqtt_topic}/status/bridge/tcp_server/running",
+                        "ON".encode()
+                    )
                 async with self._server:
                     await self._server.serve_forever()
             except asyncio.CancelledError as ce:
-                pass
+                raise ce
             except Exception as e:
                 logger.exception("%s Server Exception: %s" % (self.lp, e))
+            else:
+                logger.debug(f"{lp} DEBUG>>> AFTER self._server.serve_forever() <<<DEBUG")
 
     async def stop(self):
-        self.shutting_down = True
-        lp = f"{self.lp}stop:"
-        device: CyncTCPDevice
-        devices = list(self.tcp_devices.values())
-        if devices:
-            for device in devices:
-                try:
-                    await device.close()
-                except Exception as e:
-                    logger.exception("%s Error closing Cync Wi-Fi device connection: %s" % (lp, e))
-                else:
-                    logger.debug(f"{lp} Cync Wi-Fi device connection closed")
-        else:
-            logger.debug(f"{lp} No Cync Wi-Fi devices connected!")
-
-        if self._server:
-            if self._server.is_serving():
-                logger.debug(f"{lp} shutting down NOW...")
-                self._server.close()
-                await self._server.wait_closed()
-                logger.debug(f"{lp} shut down!")
+        try:
+            self.shutting_down = True
+            lp = f"{self.lp}stop:"
+            device: CyncTCPDevice
+            devices = list(self.tcp_devices.values())
+            if devices:
+                logger.debug(f"{lp} Shutting down, closing connections to {len(devices)} devices...")
+                for device in devices:
+                    try:
+                        await device.close()
+                    except asyncio.CancelledError as ce:
+                        logger.debug(f"{lp} Device close cancelled: {ce}")
+                        # propagate the cancellation
+                        raise ce
+                    except Exception as e:
+                        logger.exception("%s Error closing Cync Wi-Fi device connection: %s" % (lp, e))
+                    else:
+                        logger.debug(f"{lp} Cync Wi-Fi device connection closed")
             else:
-                logger.debug(f"{lp} not running!")
+                logger.debug(f"{lp} No Cync Wi-Fi devices connected!")
+
+            if self._server:
+                if self._server.is_serving():
+                    logger.debug(f"{lp} shutting down NOW...")
+                    self._server.close()
+                    await self._server.wait_closed()
+                    # TODO: publish the server running status
+                    if g.mqtt_client:
+                        await g.mqtt_client.publish(
+                            f"{g.env.mqtt_topic}/status/bridge/tcp_server/running",
+                            "OFF".encode()
+                        )
+                    logger.debug(f"{lp} shut down!")
+                else:
+                    logger.debug(f"{lp} not running!")
+
+        except asyncio.CancelledError as ce:
+            logger.debug(f"{lp} Server stop cancelled: {ce}")
+            # propagate the cancellation
+            raise ce
+        except Exception as e:
+            logger.exception(f"{lp} Error during server shutdown: {e}")
+        else:
+            logger.info(f"{lp} Server stopped successfully.")
 
     async def _register_new_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -205,16 +285,24 @@ class nCyncServer:
         else:
             self.tcp_conn_attempts[client_addr] = 1
         lp = f"{self.lp}new_conn:{client_addr}:"
-        existing_device = self.tcp_devices.pop(client_addr, None)
+        existing_device = await self.remove_tcp_device(client_addr)
         if existing_device is not None:
             existing_device_id = id(existing_device)
             logger.debug(
                 f"{lp} Existing device found ({existing_device_id}), gracefully killing..."
             )
             del existing_device
-        new_device = CyncTCPDevice(reader, writer, client_addr)
-        add_device = await new_device.max_conn_check()
-        if add_device:
-            self.tcp_devices[new_device.address] = new_device
-        else:
-            del new_device
+        try:
+            new_device = CyncTCPDevice(reader, writer, client_addr)
+            # will sleep devices that cant connect to prevent connection flooding
+            can_connect = await new_device.can_connect()
+            if can_connect:
+                await self.add_tcp_device(new_device)
+            else:
+                del new_device
+        except asyncio.CancelledError as ce:
+            logger.debug(f"{lp} Connection cancelled: {ce}")
+            # propagate the cancellation
+            raise ce
+        except Exception as e:
+            logger.exception(f"{lp} Error creating new Cync Wi-Fi device: {e}")

@@ -121,6 +121,7 @@ async def download_config():
 
 class ExportServer:
     lp = "ExportServer:"
+    running: bool = False
     _instance: Optional['ExportServer'] = None
 
     def __new__(cls, *args, **kwargs):
@@ -138,6 +139,14 @@ class ExportServer:
         """Start the FastAPI server."""
         lp = f"{self.lp}start:"
         logger.info(f"{lp} Starting FastAPI export server on {CYNC_SRV_HOST}:{INGRESS_PORT}")
+        self.running = True
+        # ["state_topic"] = f"{self.topic}/status/bridge/export_server/running"
+        # TODO: publish MQTT message indicating the export server status
+        if g.mqtt_client:
+            await g.mqtt_client.publish(
+                f"{g.env.mqtt_topic}/status/bridge/export_server/running",
+                "ON".encode()
+            )
         await self.uvi_server.serve()
 
     async def stop(self):
@@ -145,3 +154,10 @@ class ExportServer:
         lp = f"{self.lp}stop:"
         logger.info(f"{lp} Stopping FastAPI export server...")
         await self.uvi_server.shutdown()
+        self.running = False
+        # TODO: publish MQTT message indicating the export server status
+        if g.mqtt_client:
+            await g.mqtt_client.publish(
+                f"{g.env.mqtt_topic}/status/bridge/export_server/running",
+                "OFF".encode()
+            )

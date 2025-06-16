@@ -160,6 +160,8 @@ def main():
     g.cync_lan = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(g.cync_lan.start())
+    except asyncio.CancelledError as e:
+        logger.info(f"{lp} CyncLAN async stack cancelled: {e}")
     except KeyboardInterrupt:
         logger.info(f"{lp} Caught KeyboardInterrupt, exiting...")
     except Exception as e:

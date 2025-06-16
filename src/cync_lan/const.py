@@ -7,6 +7,7 @@ import tzlocal
 from cync_lan import __version__
 
 __all__ = [
+    "TCP_BLACKHOLE_DELAY",
     "CYNC_MANUFACTURER",
     "CYNC_BRIDGE_OBJ_ID",
     "CYNC_MINK",
@@ -50,7 +51,6 @@ __all__ = [
     "YES_ANSWER",
     "CYNC_RAW",
     "CYNC_DEBUG",
-    "CYNC_ADDON_UUID",
     "CYNC_CORP_ID",
     "DATA_BOUNDARY",
     "RAW_MSG",
@@ -108,10 +108,9 @@ CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 CYNC_BASE_DIR: str = "/root"
 CYNC_STATIC_DIR: str = "/root/cync-lan/www"
 
-PERSISTENT_BASE_DIR: str = "/homeassistant/.storage/cync-lan/config"
+PERSISTENT_BASE_DIR: str = os.environ.get("CYNC_PERSISTENT_BASE_DIR", "/homeassistant/.storage/cync-lan/config")
 CYNC_CONFIG_FILE_PATH: str = f"{PERSISTENT_BASE_DIR}/cync_mesh.yaml"
 CYNC_UUID_PATH: str = f"{PERSISTENT_BASE_DIR}/uuid.txt"
-
 CYNC_CLOUD_AUTH_PATH: str = f"{PERSISTENT_BASE_DIR}/.cloud_auth.yaml"
 CYNC_SSL_CERT: str = os.environ.get("CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
 CYNC_SSL_KEY: str = os.environ.get("CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
@@ -121,13 +120,12 @@ CYNC_BRIDGE_DEVICE_REGISTRY_CONF: dict = {}
 CYNC_PORT = 23779
 INGRESS_PORT = 23778
 CYNC_CHUNK_SIZE = 2048
-CYNC_ADDON_UUID: str = ""
 CYNC_CORP_ID: str = "1007d2ad150c4000"
 DATA_BOUNDARY = 0x7E
 RAW_MSG = (
     " Set the CYNC_RAW_DEBUG env var to 1 to see the data" if CYNC_RAW is False else ""
 )
-ENABLE_EXPORTER: bool = False
+ENABLE_EXPORTER: bool = os.environ.get("CYNC_ENABLE_EXPORTER", "0").casefold() in YES_ANSWER
 # hardcoded: internally cync uses 0-100. So, no matter the bulbs actual kelvin range, it will work out.
 CYNC_MINK: int = 2000
 CYNC_MAXK: int = 7000
@@ -156,4 +154,8 @@ ORIGIN_STRUCT = {
                     "support_url": SRC_REPO_URL,
                 }
 
-CYNC_MANUFACTURER = 'Savant'
+CYNC_MANUFACTURER = "Savant"
+TCP_BLACKHOLE_DELAY: float = os.environ.get("CYNC_TCP_BLACKHOLE_DELAY", 14.75)
+if TCP_BLACKHOLE_DELAY:
+    if not isinstance(TCP_BLACKHOLE_DELAY, float):
+        TCP_BLACKHOLE_DELAY = float(TCP_BLACKHOLE_DELAY)

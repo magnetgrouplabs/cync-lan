@@ -3,21 +3,20 @@ import json
 import logging
 import os
 import re
-import uuid
 from json import JSONDecodeError
-from typing import Optional, Union, List, Coroutine
+from typing import Optional, Union, List, Coroutine, Dict
 
 import aiomqtt
 
 from cync_lan.const import *
 from cync_lan.devices import CyncDevice
-from cync_lan.metadata.model_info import device_type_map, DeviceClassification
+from cync_lan.metadata.model_info import device_type_map
 from cync_lan.structs import DeviceStatus, GlobalObject
 from cync_lan.utils import send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
-cync_bridge_device_registry_conf = CYNC_BRIDGE_DEVICE_REGISTRY_CONF
+bridge_device_reg_struct = CYNC_BRIDGE_DEVICE_REGISTRY_CONF
 
 
 class MQTTClient:
@@ -50,7 +49,7 @@ class MQTTClient:
             ha_topic = CYNC_HASS_TOPIC
 
 
-        self.broker_client_id = f"cync_lan_{CYNC_ADDON_UUID}"
+        self.broker_client_id = f"cync_lan_{g.uuid}"
         lwt = aiomqtt.Will(
             topic=f"{topic}/connected",
             payload=DEVICE_LWT_MSG
@@ -80,6 +79,14 @@ class MQTTClient:
                 itr += 1
                 self._connected = await self.connect()
                 if self._connected:
+                    # ["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
+                    # TODO: publish MQTT message indicating the MQTT client is connected
+                    if g.mqtt_client is not None:
+                        await g.mqtt_client.publish(
+                            f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
+                            'ON'.encode(),
+                        )
+
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
                         for device_id, device in g.ncync_server.devices.items():
@@ -120,6 +127,11 @@ class MQTTClient:
                         logger.warning(f"{lp} MQTT error: {msg_err}")
                         continue
                 else:
+                    if g.mqtt_client is not None:
+                        await g.mqtt_client.publish(
+                            f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
+                            'OFF'.encode(),
+                        )
                     delay = CYNC_MQTT_CONN_DELAY
                     if delay is None:
                         delay = 5
@@ -129,7 +141,7 @@ class MQTTClient:
 
                     logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
                     await asyncio.sleep(delay)
-        except asyncio.CancelledError as c_exc:
+        except asyncio.CancelledError:
             pass
         except Exception as exc:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
@@ -184,7 +196,6 @@ class MQTTClient:
 
     async def start_receiver_task(self):
         """Start listening for MQTT messages on subscribed topics"""
-        # TODO: add bridge logic and FAN controller logic
         lp = f"{self.lp}rcv:"
         async for message in self.client.messages:
             message: aiomqtt.message.Message
@@ -196,20 +207,84 @@ class MQTTClient:
             _topic = topic.value.split("/")
             # Messages sent to the cync topic
             tasks = []
+            device = None
             # cync_topic/(set|status)/device_id(/extra_data)?
             if _topic[0] == CYNC_TOPIC:
-
                 if _topic[1] == "set":
                     logger.debug(f"{lp} Processing set command for topic: {topic} --> {payload}")
+                    device_id = _topic[2]
+                    if device_id.startswith("bridge"):
+                        pass
+                    else:
+                        device_id = int(_topic[2].split("-")[1])
+                        if device_id not in g.ncync_server.devices:
+                            logger.warning(
+                                f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted / added any "
+                                f"devices recently?"
+                            )
+                            continue
+                        device = g.ncync_server.devices[device_id]
                     extra_data = _topic[3:] if len(_topic) > 3 else None
-                    device_id = int(_topic[2].split("-")[1])
-                    if device_id not in g.ncync_server.devices:
-                        logger.warning(
-                            f"{lp} Device ID {device_id} not found, device is disabled in config file or have you deleted / added any "
-                            f"devices recently?"
-                        )
-                        continue
-                    device = g.ncync_server.devices[device_id]
+                    # button default payload = 'PRESS'
+                    # binary_sensor defaults: ON / OFF
+                    if extra_data:
+                        logger.debug(f"{lp} Extra data found: {extra_data}")
+                        norm_pl = payload.decode().casefold()
+                        if extra_data[0] == "bridge":
+                            # button: f"{self.topic}/set/bridge/restart"
+                            if extra_data[1] == "restart":
+                                if norm_pl == "press":
+                                    logger.info(f"{lp} Restart button pressed! Restarting Cync LAN bridge (NOT IMPLEMENTED)...")
+                                    # button: f"{self.topic}/set/bridge/start_export"
+                            elif extra_data[1] == "start_export":
+                                if norm_pl == "press":
+                                    logger.info(f"{lp} Start Export button pressed! Starting Cync Export (NOT IMPLEMENTED)...")
+
+                            elif extra_data[1] == "otp":
+                                # button: f"{self.topic}/set/bridge/otp/submit"
+                                if norm_pl == "submit":
+                                    logger.info(f"{lp} OTP submit button pressed! (NOT IMPLEMENTED)...")
+                                    # number: f"{self.topic}/set/bridge/otp/input"
+                                elif norm_pl == "input":
+                                    logger.info(f"{lp} OTP input received: {norm_pl} (NOT IMPLEMENTED)...")
+                        elif device and device.is_fan_controller:
+                            # FAN controller logic
+                            # entity_registry_struct["percentage_command_topic"] = "{0}/set/{1}/percentage".format(self.topic, device_uuid)
+                            # entity_registry_struct["percentage_state_topic"] = "{0}/status/{1}/percentage".format(self.topic, device_uuid)
+                            # entity_registry_struct["preset_modes"] = ["off", "low", "medium", "high", "max"]
+                            # entity_registry_struct["preset_mode_command_topic"] = "{0}/set/{1}/preset".format(self.topic, device_uuid)
+                            # entity_registry_struct["preset_mode_state_topic"] = "{0}/status/{1}/preset".format(self.topic, device_uuid)
+                            if extra_data[0] == "percentage":
+                                percentage = int(norm_pl)
+                                if percentage == 0:
+                                    tasks.append(device.set_power(0))
+                                elif percentage <= 50:
+                                    tasks.append(device.set_brightness(50))
+                                elif percentage <= 128:
+                                    tasks.append(device.set_brightness(128))
+                                elif percentage <= 191:
+                                    tasks.append(device.set_brightness(191))
+                                else:
+                                    tasks.append(device.set_brightness(255))
+                            elif extra_data[0] == "preset_mode":
+                                preset_mode = norm_pl
+                                if preset_mode == "off":
+                                    # FIXME: which one?
+                                    tasks.append(device.set_brightness(0))
+                                    tasks.append(device.set_power(0))
+                                elif preset_mode == "low":
+                                    tasks.append(device.set_brightness(50))
+                                elif preset_mode == "medium":
+                                    tasks.append(device.set_brightness(128))
+                                elif preset_mode == "high":
+                                    tasks.append(device.set_brightness(191))
+                                elif preset_mode == "max":
+                                    tasks.append(device.set_brightness(255))
+                                else:
+                                    logger.warning(
+                                        f"{lp} Unknown preset mode: {preset_mode}, skipping..."
+                                    )
+
                     if payload.startswith(b"{"):
                         try:
                             json_data = json.loads(payload)
@@ -257,44 +332,6 @@ class MQTTClient:
                                 else:
                                     color.append(0)
                             tasks.append(device.set_rgb(*color))
-                        if "preset_mode" in json_data:
-                            if device.is_fan_controller:
-                                preset_mode = json_data["preset_mode"]
-                                if preset_mode == "off":
-                                    tasks.append(device.set_power(0))
-                                elif preset_mode == "low":
-                                    tasks.append(device.set_brightness(50))
-                                elif preset_mode == "medium":
-                                    tasks.append(device.set_brightness(128))
-                                elif preset_mode == "high":
-                                    tasks.append(device.set_brightness(191))
-                                elif preset_mode == "max":
-                                    tasks.append(device.set_brightness(255))
-                                else:
-                                    logger.warning(
-                                        f"{lp} Unknown preset mode: {preset_mode}, skipping..."
-                                    )
-                            else:
-                                logger.warning(
-                                    f"{lp} Device {device.name} (ID: {device.id}) does not support preset modes, skipping..."
-                                )
-                        if "percentage" in json_data:
-                            if device.is_fan_controller:
-                                percentage = int(json_data["percentage"])
-                                if percentage == 0:
-                                    tasks.append(device.set_power(0))
-                                elif percentage <= 50:
-                                    tasks.append(device.set_brightness(50))
-                                elif percentage <= 128:
-                                    tasks.append(device.set_brightness(128))
-                                elif percentage <= 191:
-                                    tasks.append(device.set_brightness(191))
-                                else:
-                                    tasks.append(device.set_brightness(255))
-                            else:
-                                logger.warning(
-                                    f"{lp} Device {device.name} (ID: {device.id}) does not support percentage control, skipping..."
-                                )
                     # binary payload does not start with a '{', so it is not JSON
                     else:
                         str_payload = payload.decode("utf-8").strip()
@@ -308,23 +345,6 @@ class MQTTClient:
                             elif str_payload.casefold() == "off":
                                 logger.debug(f"{lp} setting power to OFF (non-JSON)")
                                 tasks.append(device.set_power(0))
-
-                            elif device.is_fan_controller:
-                                preset_mode = str_payload.casefold()
-                                if preset_mode == "off":
-                                    tasks.append(device.set_power(0))
-                                elif preset_mode == "low":
-                                    tasks.append(device.set_brightness(50))
-                                elif preset_mode == "medium":
-                                    tasks.append(device.set_brightness(128))
-                                elif preset_mode == "high":
-                                    tasks.append(device.set_brightness(191))
-                                elif preset_mode == "max":
-                                    tasks.append(device.set_brightness(255))
-                                else:
-                                    logger.warning(
-                                        f"{lp} Unknown preset mode: {preset_mode}, skipping..."
-                                    )
                         else:
                             logger.warning(
                                 f"{lp} Unknown payload: {payload}, skipping..."
@@ -382,9 +402,19 @@ class MQTTClient:
         lp = f"{self.lp}stop:"
         # set all devices offline
         if self._connected:
-            logger.debug(f"{lp} Setting all devices offline...")
+            logger.debug(f"{lp} Setting all Cync devices offline...")
             for device_id, device in g.ncync_server.devices.items():
                 await self.pub_online(device_id, False)
+            # ["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
+            # TODO: publish MQTT message indicating the MQTT client is connected
+            await self.publish(
+                f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
+                'OFF'.encode(),
+            )
+            await self.publish(
+                f"{g.env.mqtt_topic}/availability/bridge",
+                "offline".encode()
+            )
             await self.send_will_msg()
         try:
             logger.debug(
@@ -518,7 +548,7 @@ class MQTTClient:
         #     # logger.debug(f"{lp} Device status unchanged, skipping...")
         #     return
         power_status = "OFF" if device_status.state == 0 else "ON"
-        mqtt_dev_state = {"state": power_status}
+        mqtt_dev_state: Dict[str, Union[int, str, bytes]] = {"state": power_status}
 
         if device.is_plug:
             mqtt_dev_state = power_status.encode()
@@ -566,9 +596,8 @@ class MQTTClient:
                     qos=0,
                     retain=True,
                 )
-            except aiomqtt.MqttError as mqtt_code_exc:
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
                 logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
-                self._connected = False
             except asyncio.CancelledError as can_exc:
                 logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
             else:
@@ -619,7 +648,7 @@ class MQTTClient:
                     if device.type in device_type_map:
                         model_str = device_type_map[device.type].model_string
                     dev_connections = [("bluetooth", device.mac.casefold())]
-                    if not device.bt_only():
+                    if not device.bt_only:
                         dev_connections.append(("mac", device.wifi_mac.casefold()))
 
                     device_registry_struct = {
@@ -629,7 +658,7 @@ class MQTTClient:
                         "name": device.name,
                         "sw_version": ver_str,
                         "model": model_str,
-                        "via_device": CYNC_ADDON_UUID,
+                        "via_device": str(g.uuid),
                     }
 
                     entity_registry_struct = {
@@ -673,35 +702,38 @@ class MQTTClient:
                                 entity_registry_struct["effect"] = True
                                 entity_registry_struct["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
                     elif dev_type == "fan":
-                        # required in HASS MQTT autodiscovery for fan
                         entity_registry_struct["platform"] = "fan"
                         # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
-                        # entity_registry_struct["percentage_command_topic"] = "{0}/set/{1}/percentage".format(self.topic, device_uuid)
-                        # entity_registry_struct["percentage_state_topic"] = "{0}/status/{1}/percentage".format(self.topic, device_uuid)
+                        entity_registry_struct["percentage_command_topic"] = "{0}/set/{1}/percentage".format(self.topic, device_uuid)
+                        entity_registry_struct["percentage_state_topic"] = "{0}/status/{1}/percentage".format(self.topic, device_uuid)
                         entity_registry_struct["preset_modes"] = ["off", "low", "medium", "high", "max"]
                         entity_registry_struct["preset_mode_command_topic"] = "{0}/set/{1}/preset".format(self.topic, device_uuid)
                         entity_registry_struct["preset_mode_state_topic"] = "{0}/status/{1}/preset".format(self.topic, device_uuid)
+
 
                     tpc = tpc_str_template.format(self.ha_topic, dev_type, device_uuid)
                     try:
                         _ = await self.client.publish(
                             tpc, json.dumps(entity_registry_struct).encode(), qos=0, retain=False
                         )
+                        if device.is_fan_controller:
+                            logger.debug(f"{lp} TESTING>>> Setting up fan controller for device: {device.name} (ID: {device.id})")
+                            # set device online for testing
+                            await self.pub_online(device.id, True)
+                            await device.set_brightness(50)  # set brightness to 50% for testing
+
                     except Exception as e:
                         logger.error(
                             "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
                         )
-                    # logger.debug(
-                    #     f"{lp} {tpc}  "
-                    #     + json.dumps(dev_cfg)
-                    # )
-            except aiomqtt.MqttError as mqtt_code_exc:
+            except aiomqtt.MqttCodeError as mqtt_code_exc:
                 logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
                 self._connected = False
             except asyncio.CancelledError as can_exc:
                 logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
+                raise can_exc
             except Exception as e:
-                logger.warning(f"{lp} [Exception] -> {e}")
+                logger.exception(f"{lp} [Exception] -> {e}")
             else:
                 ret = True
         logger.debug(f"{lp} Discovery complete (success: {ret})")
@@ -711,152 +743,241 @@ class MQTTClient:
 
     async def create_bridge_device(self) -> bool:
         """Create the device / entity registry config for the CyncLAN bridge itself."""
+        global bridge_device_reg_struct
         # want to expose buttons (restart, start export, submit otp)
         # want to expose some sensors that show the number of devices, number of online devices, etc.
         # sensors to show if MQTT is connected, if the CyncLAN server is running, etc.
         # input_number to submit OTP for export
         lp = f"{self.lp}create_bridge_device:"
         ret = False
-        if self._connected:
-            global cync_bridge_device_registry_conf
 
-            logger.debug(f"{lp} Creating CyncLAN bridge device...")
-            unique_id = f"cync_lan_bridge_{CYNC_ADDON_UUID}"
-            ver_str = CYNC_VERSION
-            # Bridge device config
-            cync_bridge_device_registry_conf = {
-                "identifiers": [CYNC_ADDON_UUID],
-                "manufacturer": "baudneo",
-                "name": "CyncLAN Bridge",
-                "sw_version": ver_str,
-                "model": "Local Push Controller",
-            }
-            # Entities for the bridge device
-            entity_type = "button"
-            template_tpc = "{hass_topic}/{entity_type}/{unique_id}/config"
+        logger.debug(f"{lp} Creating CyncLAN bridge device...")
+        bridge_base_unique_id = f"cync_lan_bridge"
+        ver_str = CYNC_VERSION
+        pub_tasks: List[asyncio.Task] = []
+        # Bridge device config
+        bridge_device_reg_struct = {
+            "identifiers": [str(g.uuid)],
+            "manufacturer": "baudneo",
+            "name": "CyncLAN Bridge",
+            "sw_version": ver_str,
+            "model": "Local Push Controller",
+        }
+        # Entities for the bridge device
+        entity_type = "button"
+        template_tpc = "{0}/{1}/{2}/config"
+        pub_tasks.append(self.publish(
+            f"{self.topic}/availability/bridge",
+            "online".encode()
+        ))
 
-            entity_unique_id = f"{CYNC_ADDON_UUID}_restart"
-            restart_btn_entity_conf = {
-                # obj_id is to link back to the bridge device
-                "object_id": CYNC_BRIDGE_OBJ_ID,
-                "command_topic": f"{self.topic}/set/bridge/restart",
-                "avty_t": f"{self.topic}/status/bridge/availability",
-                "name": "Restart CyncLAN Bridge",
-                "unique_id": entity_unique_id,
-                "schema": "json",
-                "origin": ORIGIN_STRUCT,
-                "device": cync_bridge_device_registry_conf,
-            }
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(restart_btn_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish restart button entity config")
+        entity_unique_id = f"{bridge_base_unique_id}_restart"
+        restart_btn_entity_struct = {
+            "platform": "button",
+            # obj_id is to link back to the bridge device
+            "object_id": CYNC_BRIDGE_OBJ_ID + "_restart",
+            "command_topic": f"{self.topic}/set/bridge/restart",
+            "state_topic": f"{self.topic}/status/bridge/restart",
+            "avty_t": f"{self.topic}/availability/bridge",
+            "name": "Restart CyncLAN Bridge",
+            "unique_id": entity_unique_id,
+            "schema": "json",
+            "origin": ORIGIN_STRUCT,
+            "device": bridge_device_reg_struct,
+        }
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            restart_btn_entity_struct
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish restart button entity config")
 
-            entity_unique_id = f"{CYNC_ADDON_UUID}_start_export"
-            xport_btn_entity_conf = restart_btn_entity_conf
-            xport_btn_entity_conf["command_topic"] = f"{self.topic}/set/bridge/export/start"
-            xport_btn_entity_conf["state_topic"] = f"{self.topic}/status/bridge/export/start"
-            xport_btn_entity_conf["name"] = "Start Export"
-            xport_btn_entity_conf["unique_id"] = entity_unique_id
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(xport_btn_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish start export button entity config")
+        entity_unique_id = f"{bridge_base_unique_id}_start_export"
+        xport_btn_entity_conf = restart_btn_entity_struct.copy()
+        xport_btn_entity_conf["object_id"] = entity_unique_id
+        xport_btn_entity_conf["command_topic"] = f"{self.topic}/set/bridge/export/start"
+        xport_btn_entity_conf["state_topic"] = f"{self.topic}/status/bridge/export/start"
+        xport_btn_entity_conf["name"] = "Start Export"
+        xport_btn_entity_conf["unique_id"] = entity_unique_id
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            xport_btn_entity_conf
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish start export button entity config")
 
-            entity_unique_id = f"{CYNC_ADDON_UUID}_submit_otp"
-            submit_otp_btn_entity_conf = restart_btn_entity_conf
-            submit_otp_btn_entity_conf["command_topic"] = f"{self.topic}/set/bridge/otp/submit"
-            submit_otp_btn_entity_conf["state_topic"] = f"{self.topic}/status/bridge/otp/submit"
-            submit_otp_btn_entity_conf["name"] = "Submit OTP"
-            submit_otp_btn_entity_conf["unique_id"] = entity_unique_id
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(submit_otp_btn_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish submit OTP button entity config")
+        entity_unique_id = f"{bridge_base_unique_id}_submit_otp"
+        submit_otp_btn_entity_conf = restart_btn_entity_struct.copy()
+        submit_otp_btn_entity_conf["object_id"] = CYNC_BRIDGE_OBJ_ID + "_submit_otp"
+        submit_otp_btn_entity_conf["command_topic"] = f"{self.topic}/set/bridge/otp/submit"
+        submit_otp_btn_entity_conf["state_topic"] = f"{self.topic}/status/bridge/otp/submit"
+        submit_otp_btn_entity_conf["name"] = "Submit OTP"
+        submit_otp_btn_entity_conf["unique_id"] = entity_unique_id
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            submit_otp_btn_entity_conf
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish submit OTP button entity config")
 
-            entity_type = "number"
-            entity_unique_id = f"{CYNC_ADDON_UUID}_otp_input"
+        # binary sensor for if the TCP server is running
+        # binary sensor for if the export server is running
+        # binary sensor for if the MQTT client is connected
+        entity_type = "binary_sensor"
+        entity_unique_id = f"{bridge_base_unique_id}_tcp_server_running"
+        tcp_server_entity_conf = {
+            "object_id": entity_unique_id,
+            "name": "nCync TCP Server Running",
+            "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
+            "unique_id": entity_unique_id,
+            "device_class": "running",
+            "icon": "mdi:server-network",
+            "avty_t": f"{self.topic}/availability/bridge",
+            "schema": "json",
+            "origin": ORIGIN_STRUCT,
+            "device": bridge_device_reg_struct,
+        }
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            tcp_server_entity_conf
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish TCP server running entity config")
+        status = "ON" if g.ncync_server.running is True else "OFF"
+        pub_tasks.append(self.publish(
+            f"{self.topic}/status/bridge/tcp_server/running",
+            status.encode()
+        ))
 
-            otp_num_entity_cfg = {
-                "object_id": CYNC_BRIDGE_OBJ_ID,
-                "icon": "mdi:lock",
-                "state_topic": f"{self.topic}/status/bridge/otp/input",
-                "avty_t": f"{self.topic}/availability/bridge",
-                "pl_avail": "online",
-                "pl_not_avail": "offline",
-                "device_class": "lock",
-                "schema": "json",
-                "origin": ORIGIN_STRUCT,
-                "device": cync_bridge_device_registry_conf,
-            }
+        entity_unique_id = f"{bridge_base_unique_id}_export_server_running"
+        export_server_entity_conf = tcp_server_entity_conf.copy()
+        export_server_entity_conf["object_id"] = entity_unique_id
+        export_server_entity_conf["name"] = "Cync Export Server Running"
+        export_server_entity_conf["state_topic"] = f"{self.topic}/status/bridge/export_server/running"
+        export_server_entity_conf["unique_id"] = entity_unique_id
+        export_server_entity_conf["icon"] = "mdi:export-variant"
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            export_server_entity_conf
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish export server running entity config")
+        status = "ON" if g.export_server.running is True else "OFF"
+        pub_tasks.append(self.publish(
+            f"{self.topic}/status/bridge/export_server/running",
+            status.encode()
+        ))
 
-            otp_num_entity_cfg["max"] = 999999
-            otp_num_entity_cfg["mode"] = "box"
-            otp_num_entity_cfg["platform"] = "number"
-            otp_num_entity_cfg["name"] = "Cync OTP"
-            otp_num_entity_cfg["command_topic"] = f"{self.topic}/set/bridge/otp/input"
-            otp_num_entity_cfg["state_topic"] = f"{self.topic}/status/bridge/otp/input"
-            otp_num_entity_cfg["unique_id"] = entity_unique_id
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(otp_num_entity_cfg))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish OTP input number entity config")
+        entity_unique_id = f"{bridge_base_unique_id}_mqtt_client_connected"
+        mqtt_client_entity_conf = tcp_server_entity_conf.copy()
+        mqtt_client_entity_conf["object_id"] = entity_unique_id
+        mqtt_client_entity_conf["name"] = "Cync MQTT Client Connected"
+        mqtt_client_entity_conf["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
+        mqtt_client_entity_conf["unique_id"] = entity_unique_id
+        mqtt_client_entity_conf["icon"] = "mdi:connection"
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            mqtt_client_entity_conf
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish MQTT client connected entity config")
 
-            # binary sensor for if the TCP server is running
-            # binary sensor for if the export server is running
-            # binary sensor for if the MQTT client is connected
-            entity_type = "binary_sensor"
-            entity_unique_id = f"{CYNC_ADDON_UUID}_tcp_server_running"
-            tcp_server_entity_conf = {
-                "object_id": CYNC_BRIDGE_OBJ_ID,
-                "name": "nCync TCP Server Running",
-                "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
-                "unique_id": entity_unique_id,
-                "device_class": "running",
-                "icon": "mdi:server-network",
-                "avty_t": f"{self.topic}/availability/bridge",
-                "pl_avail": "online",
-                "pl_not_avail": "offline",
-                "schema": "json",
-                "origin": ORIGIN_STRUCT,
-                "device": cync_bridge_device_registry_conf,
-            }
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(tcp_server_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish TCP server running entity config")
+        # input number for OTP input
+        entity_type = "number"
+        entity_unique_id = f"{bridge_base_unique_id}_otp_input"
+        otp_num_entity_cfg = {
+            "platform": "number",
+            "object_id": entity_unique_id,
+            "icon": "mdi:lock",
+            "command_topic": f"{self.topic}/set/bridge/otp/input",
+            "state_topic": f"{self.topic}/status/bridge/otp/input",
+            "avty_t": f"{self.topic}/availability/bridge",
+            "schema": "json",
+            "origin": ORIGIN_STRUCT,
+            "device": bridge_device_reg_struct,
+            "min": 000000,
+            "max": 999999,
+            "mode": "box",
+            "name": "Cync emailed OTP",
+            "unique_id": entity_unique_id
+        }
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            otp_num_entity_cfg
+        )
+        if ret is False:
+            logger.error(f"{lp} Failed to publish OTP input number entity config")
 
-            entity_unique_id = f"{CYNC_ADDON_UUID}_export_server_running"
-            export_server_entity_conf = tcp_server_entity_conf.copy()
-            export_server_entity_conf["name"] = "Cync Export Server Running"
-            export_server_entity_conf["state_topic"] = f"{self.topic}/status/bridge/export_server/running"
-            export_server_entity_conf["unique_id"] = entity_unique_id
-            export_server_entity_conf["icon"] = "mdi:export-variant"
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(export_server_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish export server running entity config")
+        # Sensors
+        entity_type = "sensor"
+        entity_unique_id = f"{bridge_base_unique_id}_connected_tcp_devices"
+        num_tcp_devices_entity_conf = {
+            "platform": "sensor",
+            "object_id": entity_unique_id,
+            "name": "TCP Devices Connected",
+            "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
+            "unique_id": entity_unique_id,
+            "icon": "mdi:counter",
+            "avty_t": f"{self.topic}/availability/bridge",
+            # "unit_of_measurement": "TCP device(s)",
+            "schema": "json",
+            "origin": ORIGIN_STRUCT,
+            "device": bridge_device_reg_struct,
+        }
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            num_tcp_devices_entity_conf
+        )
+        if ret is False:
+            logger.warning(f"{lp} Failed to publish number of TCP devices connected entity config")
+        pub_tasks.append(self.publish(
+            f"{self.topic}/status/bridge/tcp_devices/connected",
+            str(len(g.ncync_server.tcp_devices)).encode()
+        ))
+        # total cync devices managed
+        total_cync_devs = len(g.ncync_server.devices)
+        entity_unique_id = f"{bridge_base_unique_id}_total_cync_devices"
+        total_cync_devs_entity_conf = num_tcp_devices_entity_conf.copy()
+        total_cync_devs_entity_conf["object_id"] = entity_unique_id
+        total_cync_devs_entity_conf["name"] = "Cync Devices Managed"
+        total_cync_devs_entity_conf["state_topic"] = f"{self.topic}/status/bridge/cync_devices/total"
+        total_cync_devs_entity_conf["unique_id"] = entity_unique_id
+        # total_cync_devs_entity_conf["unit_of_measurement"] = "Cync device(s)"
+        ret = await self.publish_json_msg(
+            template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
+            total_cync_devs_entity_conf
+        )
+        if ret is False:
+            logger.warning(f"{lp} Failed to publish total Cync devices managed entity config")
+        pub_tasks.append(self.publish(
+            f"{self.topic}/status/bridge/cync_devices/total",
+            str(total_cync_devs).encode()
+        ))
 
-            entity_unique_id = f"{CYNC_ADDON_UUID}_mqtt_client_connected"
-            mqtt_client_entity_conf = tcp_server_entity_conf.copy()
-            mqtt_client_entity_conf["name"] = "Cync MQTT Client Connected"
-            mqtt_client_entity_conf["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
-            mqtt_client_entity_conf["unique_id"] = entity_unique_id
-            mqtt_client_entity_conf["icon"] = "mdi:connection"
-            tpc = template_tpc.format(self.ha_topic, entity_type, entity_unique_id)
-            ret = await self.publish_msg(tpc, json.dumps(mqtt_client_entity_conf))
-            if ret is False:
-                logger.error(f"{lp} Failed to publish MQTT client connected entity config")
-
-            # create sensors for # of TCP devices connected
-            # sensor for total # of Cync devices being managed (how many enabled device IDs in the config)
-            entity_type = "sensor"
-
-
-        logger.debug(f"{lp} Bridge device config published")
+        await asyncio.gather(*pub_tasks, return_exceptions=True)
+        logger.debug(f"{lp} Bridge device config published and seeded")
         return ret
 
-    async def publish_msg(self, topic: str, msg_data: str) -> bool:
+    async def publish(self, topic: str, msg_data: bytes):
+        """Publish a message to the MQTT broker."""
+        lp = f"{self.lp}publish:"
+        if not self._connected:
+            logger.warning(f"{lp} Not connected to MQTT broker, cannot publish message")
+            return False
+        try:
+            _ = await self.client.publish(topic, msg_data, qos=0, retain=False)
+        except aiomqtt.MqttError as mqtt_code_exc:
+            logger.warning(f"{lp} [MqttError] (rc: {mqtt_code_exc.rc}) -> {mqtt_code_exc}")
+            self._connected = False
+        except asyncio.CancelledError as can_exc:
+            logger.warning(f"{lp} [Task Cancelled] -> {can_exc}")
+        except Exception as e:
+            logger.warning(f"{lp} [Exception] -> {e}")
+        else:
+            return True
+        return False
+
+    async def publish_json_msg(self, topic: str, msg_data: dict) -> bool:
         lp = f"{self.lp}publish_msg:"
         try:
             _ = await self.client.publish(

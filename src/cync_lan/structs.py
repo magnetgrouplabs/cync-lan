@@ -42,6 +42,7 @@ class GlobalObjEnv(BaseModel):
     cync_srv_host: Optional[str] = None
     cync_srv_ssl_cert: Optional[str] = None
     cync_srv_ssl_key: Optional[str] = None
+    persistent_base_dir: Optional[str] = None
 
 class GlobalObject:
     cync_lan: Optional[CyncLAN] = None
@@ -52,6 +53,7 @@ class GlobalObject:
     cloud_api: Optional[CyncCloudAPI] = None
     tasks: List[asyncio.Task] = []
     env: GlobalObjEnv = GlobalObjEnv()
+    uuid: Optional[uuid.UUID] = None
 
     _instance: Optional['GlobalObject'] = None
 
@@ -65,7 +67,7 @@ class GlobalObject:
         global CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS
         global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC
         global CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_SRV_HOST
-        global CYNC_SSL_CERT, CYNC_SSL_KEY, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD
+        global CYNC_SSL_CERT, CYNC_SSL_KEY, CYNC_ACCOUNT_USERNAME, CYNC_ACCOUNT_PASSWORD, PERSISTENT_BASE_DIR
 
         self.env.account_username = CYNC_ACCOUNT_USERNAME = os.environ.get("CYNC_ACCOUNT_USERNAME", None)
         self.env.account_password = CYNC_ACCOUNT_PASSWORD = os.environ.get("CYNC_ACCOUNT_PASSWORD", None)
@@ -81,6 +83,7 @@ class GlobalObject:
         self.env.cync_srv_host = CYNC_SRV_HOST = os.environ.get("CYNC_SRV_HOST", "0.0.0.0")
         self.env.cync_srv_ssl_cert = CYNC_SSL_CERT = os.environ.get("CYNC_SSL_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem")
         self.env.cync_srv_ssl_key = CYNC_SSL_KEY = os.environ.get("CYNC_SSL_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem")
+        self.env.persistent_base_dir = PERSISTENT_BASE_DIR = os.environ.get("CYNC_PERSISTENT_BASE_DIR", "/homeassistant/.storage/cync-lan/config")
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class Tasks:

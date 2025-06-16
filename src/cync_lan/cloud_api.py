@@ -43,8 +43,6 @@ class CyncCloudAPI:
             logger.debug(f"{lp} Closing aiohttp ClientSession")
             await self.http_session.close()
             self.http_session = None
-        else:
-            logger.debug(f"{lp} No aiohttp ClientSession to close or already closed")
 
     async def _check_session(self):
         """
@@ -290,10 +288,6 @@ class CyncCloudAPI:
         mesh_config = await self._mesh_to_config(mesh_networks)
         try:
             with open(CYNC_CONFIG_FILE_PATH, "w") as f:
-                if CYNC_ADDON_UUID:
-                    f.write("# DO NOT CHANGE THE UUID!!!\n")
-                    f.write("# It is used for the CyncLAN Controller/Bridge device in HASS\n")
-                    f.write(f"uuid: {CYNC_ADDON_UUID}\n")
                 f.write(yaml.dump(mesh_config))
         except Exception as file_exc:
             logger.error(f"{self.lp} Failed to write mesh config to file: {CYNC_CONFIG_FILE_PATH} -> {file_exc}")

@@ -473,12 +473,14 @@ device_type_map = {
         model_name="White Edison ST19 Bulb",
         protocol=DeviceProtocol(TCP=True),
         characteristics=LightCharacteristics(min_kelvin=2700),
+        capabilities=LightCapabilities(),
     ),
     152: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Reveal HD+ White A19 Bulb",
         protocol=DeviceProtocol(TCP=True),
         characteristics=LightCharacteristics(min_kelvin=2700),
+        capabilities=LightCapabilities(),
     ),
     153: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,

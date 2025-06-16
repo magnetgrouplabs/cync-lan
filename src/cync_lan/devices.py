@@ -75,8 +75,8 @@ class CyncDevice:
         # state: 0:off 1:on
         self._state: int = 0
         # 0-100
-        self._brightness: int = 0
-        # 0-100 (warm to cool), 129 = in effect mode, 254 = in RGB mode
+        self._brightness: Optional[int] = None
+        # FOR LIGHTS: 0-100 (warm to cool), 129 = in effect mode, 254 = in RGB mode
         self._temperature: int = 0
         # 0-255
         self._r: int = 0
@@ -340,7 +340,6 @@ class CyncDevice:
                 logger.error(f"{lp} Invalid brightness! must be 0-100")
                 return
             elif self.is_fan_controller:
-                # TODO: fan controller brightness is 0-255, so we allow that
                 # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
                 pass
 
@@ -926,7 +925,7 @@ class CyncTCPDevice:
         self.control_bytes = [0x00, 0x00]
 
 
-    async def max_conn_check(self):
+    async def can_connect(self):
         lp = f"{self.lp}"
         tcp_dev_len = len(g.ncync_server.tcp_devices)
         num_attempts = g.ncync_server.tcp_conn_attempts[self.address]
@@ -943,22 +942,24 @@ class CyncTCPDevice:
                 _sleep = True
             tst_ = (num_attempts == 1) or (num_attempts % 20 == 0)
             lmsg = f"{lp} {reason}rejecting new connection..."
-            delay = 14.75
+            delay = TCP_BLACKHOLE_DELAY
             if tst_:
                 logger.warning(lmsg)
             await asyncio.sleep(delay) if _sleep is True else None
             try:
                 self.reader.feed_eof()
                 self.writer.close()
-                await self.writer.wait_closed()
+                await asyncio.wait(self.writer.wait_closed(), 5)
             except asyncio.CancelledError as ce:
                 logger.debug(f"{lp} Task cancelled: {ce}")
+                raise ce
             except Exception as e:
                 logger.error(f"{lp} Error closing reader/writer: {e}", exc_info=True)
             finally:
                 self.reader = None
                 self.writer = None
                 return False
+        # can create a new device
         logger.debug(f"{self.lp} Created new device: {self.address}")
         self.tasks.receive = asyncio.get_event_loop().create_task(
             self.receive_task(), name=f"receive_task-{self._py_id}"
@@ -1954,7 +1955,7 @@ class CyncTCPDevice:
                                 f"the device itself hasn't called close(). The device probably "
                                 f"dropped the connection (lost power). Removing {dev.address}"
                             )
-                            off_dev = g.ncync_server.tcp_devices.pop(dev.address, None)
+                            off_dev = await g.ncync_server.remove_tcp_device(dev)
                             del off_dev
 
                         else:
