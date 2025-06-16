@@ -81,11 +81,10 @@ class MQTTClient:
                 if self._connected:
                     # ["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
                     # TODO: publish MQTT message indicating the MQTT client is connected
-                    if g.mqtt_client is not None:
-                        await g.mqtt_client.publish(
-                            f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
-                            'ON'.encode(),
-                        )
+                    await self.publish(
+                        f"{self.topic}/status/bridge/mqtt_client/connected",
+                        'ON'.encode(),
+                    )
 
                     if itr == 1:
                         logger.debug(f"{lp} Seeding all devices: offline")
@@ -123,15 +122,17 @@ class MQTTClient:
                                  f"Waiting for MQTT messages...")
                     try:
                         await self.start_receiver_task()
+                    except asyncio.CancelledError as ce:
+                        logger.debug(f"{lp} MQTT receiver task cancelled, propagating...")
+                        raise ce
                     except (aiomqtt.MqttError, aiomqtt.MqttCodeError) as msg_err:
                         logger.warning(f"{lp} MQTT error: {msg_err}")
                         continue
                 else:
-                    if g.mqtt_client is not None:
-                        await g.mqtt_client.publish(
-                            f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
-                            'OFF'.encode(),
-                        )
+                    await self.publish(
+                        f"{self.topic}/status/bridge/mqtt_client/connected",
+                        'OFF'.encode(),
+                    )
                     delay = CYNC_MQTT_CONN_DELAY
                     if delay is None:
                         delay = 5
@@ -141,17 +142,15 @@ class MQTTClient:
 
                     logger.info(f"{lp} connecting to MQTT broker failed, sleeping for {delay} seconds before re-trying...")
                     await asyncio.sleep(delay)
-        except asyncio.CancelledError:
-            pass
+        except asyncio.CancelledError as ce:
+            raise ce
         except Exception as exc:
             logger.exception(f"{lp} MQTT start() EXCEPTION: {exc}")
 
     async def connect(self) -> bool:
-
         lp = f"{self.lp}connect:"
         self._connected = False
         logger.debug(f"{lp} Connecting to MQTT broker...")
-        # update host, username and password
         lwt = aiomqtt.Will(
             topic=f"{self.topic}/connected",
             payload=DEVICE_LWT_MSG
@@ -201,9 +200,9 @@ class MQTTClient:
             message: aiomqtt.message.Message
             topic = message.topic
             payload = message.payload
-            logger.debug(
-                f"{lp} Received: {topic} => {payload}"
-            )
+            if not payload:
+                logger.debug(f"{lp} Received empty payload for topic: {topic} , skipping...")
+                continue
             _topic = topic.value.split("/")
             # Messages sent to the cync topic
             tasks = []
@@ -213,7 +212,7 @@ class MQTTClient:
                 if _topic[1] == "set":
                     logger.debug(f"{lp} Processing set command for topic: {topic} --> {payload}")
                     device_id = _topic[2]
-                    if device_id.startswith("bridge"):
+                    if device_id == "bridge":
                         pass
                     else:
                         device_id = int(_topic[2].split("-")[1])
@@ -228,25 +227,24 @@ class MQTTClient:
                     # button default payload = 'PRESS'
                     # binary_sensor defaults: ON / OFF
                     if extra_data:
-                        logger.debug(f"{lp} Extra data found: {extra_data}")
                         norm_pl = payload.decode().casefold()
-                        if extra_data[0] == "bridge":
-                            # button: f"{self.topic}/set/bridge/restart"
-                            if extra_data[1] == "restart":
-                                if norm_pl == "press":
-                                    logger.info(f"{lp} Restart button pressed! Restarting Cync LAN bridge (NOT IMPLEMENTED)...")
-                                    # button: f"{self.topic}/set/bridge/start_export"
-                            elif extra_data[1] == "start_export":
-                                if norm_pl == "press":
-                                    logger.info(f"{lp} Start Export button pressed! Starting Cync Export (NOT IMPLEMENTED)...")
+                        logger.debug(f"{lp} Extra data found: {extra_data}")
+                        # button: f"{self.topic}/set/bridge/restart"
+                        if extra_data[0] == "restart":
+                            if norm_pl == "press":
+                                logger.info(f"{lp} Restart button pressed! Restarting Cync LAN bridge (NOT IMPLEMENTED)...")
+                                # button: f"{self.topic}/set/bridge/start_export"
+                        elif extra_data[0] == "start_export":
+                            if norm_pl == "press":
+                                logger.info(f"{lp} Start Export button pressed! Starting Cync Export (NOT IMPLEMENTED)...")
 
-                            elif extra_data[1] == "otp":
-                                # button: f"{self.topic}/set/bridge/otp/submit"
-                                if norm_pl == "submit":
-                                    logger.info(f"{lp} OTP submit button pressed! (NOT IMPLEMENTED)...")
-                                    # number: f"{self.topic}/set/bridge/otp/input"
-                                elif norm_pl == "input":
-                                    logger.info(f"{lp} OTP input received: {norm_pl} (NOT IMPLEMENTED)...")
+                        elif extra_data[0] == "otp":
+                            # button: f"{self.topic}/set/bridge/otp/submit"
+                            if extra_data[1] == "submit":
+                                logger.info(f"{lp} OTP submit button pressed! (NOT IMPLEMENTED)...")
+                                # number: f"{self.topic}/set/bridge/otp/input"
+                            elif extra_data[1] == "input":
+                                logger.info(f"{lp} OTP input received: {norm_pl} (NOT IMPLEMENTED)...")
                         elif device and device.is_fan_controller:
                             # FAN controller logic
                             # entity_registry_struct["percentage_command_topic"] = "{0}/set/{1}/percentage".format(self.topic, device_uuid)
@@ -269,9 +267,7 @@ class MQTTClient:
                             elif extra_data[0] == "preset_mode":
                                 preset_mode = norm_pl
                                 if preset_mode == "off":
-                                    # FIXME: which one?
                                     tasks.append(device.set_brightness(0))
-                                    tasks.append(device.set_power(0))
                                 elif preset_mode == "low":
                                     tasks.append(device.set_brightness(50))
                                 elif preset_mode == "medium":
@@ -408,11 +404,11 @@ class MQTTClient:
             # ["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
             # TODO: publish MQTT message indicating the MQTT client is connected
             await self.publish(
-                f"{g.env.mqtt_topic}/status/bridge/mqtt_client/connected",
+                f"{self.topic}/status/bridge/mqtt_client/connected",
                 'OFF'.encode(),
             )
             await self.publish(
-                f"{g.env.mqtt_topic}/availability/bridge",
+                f"{self.topic}/availability/bridge",
                 "offline".encode()
             )
             await self.send_will_msg()
@@ -962,7 +958,6 @@ class MQTTClient:
         """Publish a message to the MQTT broker."""
         lp = f"{self.lp}publish:"
         if not self._connected:
-            logger.warning(f"{lp} Not connected to MQTT broker, cannot publish message")
             return False
         try:
             _ = await self.client.publish(topic, msg_data, qos=0, retain=False)
