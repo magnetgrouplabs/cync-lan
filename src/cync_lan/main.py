@@ -47,21 +47,7 @@ mqtt_logger.setLevel(logging.ERROR)
 mqtt_logger.propagate = False
 mqtt_logger.addHandler(foreign_handler)
 # logger.debug(f"{lp} Logging all registered loggers: {logging.getLogger().manager.loggerDict.keys()}")
-
 g = GlobalObject()
-
-def set_formatter_on_all_loggers(formatter):
-    logger_dict = logging.Logger.manager.loggerDict
-    for name in logger_dict:
-        if name.startswith(("uvicorn", "cync_lan", "mqtt")):
-            continue
-        logger = logging.getLogger(name)
-        logger.info(f"Setting formatter for logger: {name}")
-        if hasattr(logger, "handlers"):
-            logger.info(f"Logger {name} has handlers [{logger.handlers}], setting formatter.")
-            for handler in logger.handlers:
-                handler.setFormatter(formatter)
-                handler.setLevel(logging.DEBUG)
 
 
 class CyncLAN:
