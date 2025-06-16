@@ -1,5 +1,5 @@
 """FastAPI application for exporting Cync device configuration from the Cync Cloud API."""
-
+import asyncio
 import logging
 import os
 import sys
@@ -147,17 +147,33 @@ class ExportServer:
                 f"{g.env.mqtt_topic}/status/bridge/export_server/running",
                 "ON".encode()
             )
-        await self.uvi_server.serve()
+        try:
+            await self.uvi_server.serve()
+        except asyncio.CancelledError as ce:
+            logger.info(f"{lp} FastAPI export server stopped")
+            raise ce
+        except Exception as e:
+            logger.exception(f"{lp} Error starting FastAPI export server: {e}")
+        else:
+            logger.info(f"{lp} FastAPI export server started successfully")
 
     async def stop(self):
         """Stop the FastAPI server."""
         lp = f"{self.lp}stop:"
         logger.info(f"{lp} Stopping FastAPI export server...")
-        await self.uvi_server.shutdown()
-        self.running = False
-        # TODO: publish MQTT message indicating the export server status
-        if g.mqtt_client:
-            await g.mqtt_client.publish(
-                f"{g.env.mqtt_topic}/status/bridge/export_server/running",
-                "OFF".encode()
-            )
+        try:
+            await self.uvi_server.shutdown()
+        except asyncio.CancelledError as ce:
+            logger.info(f"{lp} FastAPI export server shutdown cancelled")
+            raise ce
+        except Exception as e:
+            logger.exception(f"{lp} Error stopping FastAPI export server: {e}")
+        else:
+            self.running = False
+        finally:
+            # TODO: publish MQTT message indicating the export server status
+            if g.mqtt_client:
+                await g.mqtt_client.publish(
+                    f"{g.env.mqtt_topic}/status/bridge/export_server/running",
+                    "OFF".encode()
+                )
