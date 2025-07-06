@@ -464,7 +464,11 @@ class MQTTClient:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         device.online = True
         device.brightness = bri
-        mqtt_dev_state = {"brightness": bri}
+        state = "ON"
+        if bri == 0:
+            state = "OFF"
+
+        mqtt_dev_state = {"state": state, "brightness": bri}
         return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
 
     async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
