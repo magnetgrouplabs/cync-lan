@@ -464,14 +464,17 @@ class MQTTClient:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         device.online = True
         device.brightness = bri
-        mqtt_dev_state = {"brightness": bri}
+        state = "ON"
+        if bri == 0:
+            state = "OFF"
+        mqtt_dev_state = {"state": state, "brightness": bri}
         return await self.send_device_status(device, json.dumps(mqtt_dev_state).encode())
 
     async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
         device.online = True
         if device.supports_temperature:
-            mqtt_dev_state = {"color_mode": "color_temp", "color_temp": self.cync2kelvin(temp)}
+            mqtt_dev_state = {"state": "ON", "color_mode": "color_temp", "color_temp": self.cync2kelvin(temp)}
             device.temperature = temp
             device.red = 0
             device.green = 0
@@ -491,7 +494,7 @@ class MQTTClient:
                     ]
                 )
         ):
-            mqtt_dev_state = {"color_mode": "rgb", "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]}}
+            mqtt_dev_state = {"state": "ON", "color_mode": "rgb", "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]}}
             device.red = rgb[0]
             device.green = rgb[1]
             device.blue = rgb[2]
