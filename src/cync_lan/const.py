@@ -8,6 +8,9 @@ import tzlocal
 from cync_lan import __version__
 
 __all__ = [
+    "EXPORT_SRV_START_TASK_NAME",
+    "MQTT_CLIENT_START_TASK_NAME",
+    "NCYNC_START_TASK_NAME",
     "FOREIGN_LOG_FORMATTER",
     "LOG_FORMATTER",
     "TCP_BLACKHOLE_DELAY",
@@ -143,6 +146,9 @@ ENABLE_EXPORTER: bool = os.environ.get("CYNC_ENABLE_EXPORTER", "0").casefold() i
 CYNC_MINK: int = 2000
 CYNC_MAXK: int = 7000
 CYNC_BRIDGE_OBJ_ID: str = "cync_lan_bridge"
+EXPORT_SRV_START_TASK_NAME = "ExportServer_START"
+MQTT_CLIENT_START_TASK_NAME = "MQTTClient_START"
+NCYNC_START_TASK_NAME = "CyncLanServer_START"
 if CYNC_TCP_WHITELIST:
     # split into a list using comma
     CYNC_TCP_WHITELIST = CYNC_TCP_WHITELIST.split(',')

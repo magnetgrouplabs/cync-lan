@@ -11,7 +11,13 @@ from typing import Optional, List, Tuple
 
 import yaml
 
-from cync_lan.const import *
+from cync_lan.const import (
+    CYNC_LOG_NAME,
+    CYNC_UUID_PATH,
+    PERSISTENT_BASE_DIR,
+    YES_ANSWER,
+    LOCAL_TZ,
+)
 from cync_lan.structs import GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -44,34 +50,26 @@ def send_sigterm():
     """
     send_signal(signal.SIGTERM)
 
-def signal_handler(signum) -> None:
-    """
-    Handle signals for graceful shutdown.
-    """
+async def _async_signal_cleanup():
+    if g.ncync_server:
+        await g.ncync_server.stop()
+    if g.export_server:
+        await g.export_server.stop()
+    if g.cloud_api:
+        await g.cloud_api.close()
+    if g.mqtt_client:
+        await g.mqtt_client.stop()
+    if g.loop:
+        for task in g.tasks:
+            if not task.done():
+                logger.debug(f"CyncLAN: Cancelling task: {task.get_name()} // {task.get_coro()=}")
+                task.cancel()
 
+def signal_handler(signum):
     logger.info(f"CyncLAN: Intercepted signal: {signal.Signals(signum).name} ({signum})")
     if g:
-        # instead of calling self.close(), which would add the close tasks to global_tasks
-        # we call stop() on the services directly, and cancel the self.start() tasks
-        # crucial to stop the MQTT connection retry loop
-        tasks = []
-        if g.ncync_server:
-            tasks.append(g.ncync_server.stop())
-        if g.mqtt_client:
-            tasks.append(g.mqtt_client.stop())
-        if g.export_server:
-            tasks.append(g.export_server.stop())
-        if g.cloud_api:
-            tasks.append(g.cloud_api.close())
-        if tasks:
-            asyncio.gather(*tasks, return_exceptions=True)
-        # cancel all not-done global_tasks (start and stop tasks)
-        if g.loop:
-            for task in g.tasks:
-                if not task.done():
-                    logger.debug(f"CyncLAN: Cancelling task: {task.get_name()} // {task.get_coro()=}")
-                    task.cancel()
-        g.tasks.clear()
+        loop = g.loop or asyncio.get_event_loop()
+        loop.create_task(_async_signal_cleanup())
 
 def bytes2list(byte_string: bytes) -> List[int]:
     """Convert a byte string to a list of integers"""
@@ -147,7 +145,7 @@ async def parse_config(cfg_file: Path):
     """Parse the exported Cync device config file and create devices from it."""
     from cync_lan.devices import CyncDevice
 
-    lp = f"parse_config:"
+    lp = "parse_config:"
     logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.as_posix()}")
     try:
         # wrap synchronous yaml reading in an async function to avoid blocking the event loop
@@ -234,7 +232,7 @@ def check_python_version():
 
 def check_for_uuid():
     """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""
-    lp = f"check_uuid:"
+    lp = "check_uuid:"
     # create dir for cync_mesh.yaml and variable data if it does not exist
     persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
     if not persistent_dir.exists():

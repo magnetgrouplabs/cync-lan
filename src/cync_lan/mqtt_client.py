@@ -23,6 +23,7 @@ bridge_device_reg_struct = CYNC_BRIDGE_DEVICE_REGISTRY_CONF
 class MQTTClient:
     lp: str = "mqtt:"
     cync_topic: str
+    start_task: Optional[asyncio.Task] = None
 
     _instance: Optional['MQTTClient'] = None
 
@@ -423,6 +424,9 @@ class MQTTClient:
             logger.info(f"{lp} Disconnected from MQTT broker")
         finally:
             self._connected = False
+            if self.start_task and not self.start_task.done():
+                logger.debug(f"{lp} FINISHING: Cancelling start task")
+                self.start_task.cancel()
 
     async def pub_online(self, device_id: int, status: bool) -> bool:
         lp = f"{self.lp}pub_online:"

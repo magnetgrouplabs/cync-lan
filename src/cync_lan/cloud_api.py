@@ -62,7 +62,7 @@ class CyncCloudAPI:
         """
         lp = f"{self.lp}:read_token_cache:"
         try:
-            with open(self.auth_cache_file, "r") as f:
+            with open(self.auth_cache_file, "rb") as f:
                 token_data: Optional[ComputedTokenData] = pickle.load(f)
         except FileNotFoundError:
             logger.debug(f"{lp} Token cache file not found: {self.auth_cache_file}")

@@ -5,6 +5,7 @@ import datetime
 import logging
 import os
 import time
+from argparse import Namespace
 from enum import StrEnum
 from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
 
@@ -55,6 +56,7 @@ class GlobalObject:
     tasks: List[asyncio.Task] = []
     env: GlobalObjEnv = GlobalObjEnv()
     uuid: Optional[uuid.UUID] = None
+    cli_args: Optional[Namespace] = None
 
     _instance: Optional['GlobalObject'] = None
 

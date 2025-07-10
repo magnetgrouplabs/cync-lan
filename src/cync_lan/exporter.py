@@ -2,10 +2,12 @@
 import asyncio
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 from typing import Optional
 
+import aiohttp
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
@@ -75,6 +77,46 @@ async def request_otp():
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/restart")
+async def restart():
+    lp = "ExportServer:restart:"
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+    if not supervisor_token:
+        logger.warning(
+            f"{lp} SUPERVISOR_TOKEN environment variable not set. Are you in a Home Assistant add-on?"
+        )
+        return False, "Supervisor token not found."
+
+    # The 'self' slug is a special value that refers to the current add-on.
+    # This is the recommended endpoint for self-restarts.
+    url = "http://supervisor/addons/self/restart"
+
+    headers = {
+        "Authorization": f"Bearer {supervisor_token}",
+        "Content-Type": "application/json",
+    }
+    logger.info(f"{lp} Attempting to restart add-on via API call to {url}...")
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers) as response:
+                if response.status == 200:
+                    logger.debug("{lp} Successfully called the restart API. The add-on will now restart.")
+                    return True, "Add-on is restarting."
+                else:
+                    # Try to get more details from the response if it fails
+                    error_details = await response.text()
+                    logger.warning(f"{lp} Error: Failed to restart add-on. API returned status {response.status}")
+                    logger.warning(f"{lp} Response: {error_details}")
+                    return False, f"API returned status {response.status}: {error_details}"
+
+    except aiohttp.ClientError as e:
+        logger.error(f"{lp} Error: An aiohttp client error occurred: {e}")
+        return False, f"AIOHTTP Client Error: {e}"
+    except Exception as e:
+        logger.error(f"{lp} An unexpected error occurred: {e}")
+        return False, f"An unexpected error occurred: {e}"
+
 @app.post("/api/export/otp/submit")
 async def submit_otp(otp_request: OTPRequest):
     ret_msg = "Export completed successfully"
@@ -109,7 +151,9 @@ async def download_config():
 
 class ExportServer:
     lp = "ExportServer:"
+    enabled: bool = False
     running: bool = False
+    start_task: Optional[asyncio.Task] = None
     _instance: Optional['ExportServer'] = None
 
     def __new__(cls, *args, **kwargs):
@@ -152,7 +196,7 @@ class ExportServer:
         except Exception as e:
             logger.exception(f"{lp} Error starting FastAPI export server: {e}")
         else:
-            logger.info(f"{lp} FastAPI export server started successfully")
+            logger.info(f"{lp} FastAPI export server lifecycle completed successfully")
 
     async def stop(self):
         """Stop the FastAPI server."""
@@ -174,3 +218,7 @@ class ExportServer:
                     f"{g.env.mqtt_topic}/status/bridge/export_server/running",
                     "OFF".encode()
                 )
+                if self.start_task and not self.start_task.done():
+                    logger.debug(f"{lp} FINISHING: Cancelling start task")
+                    self.start_task.cancel()
+

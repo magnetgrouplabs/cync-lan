@@ -33,6 +33,7 @@ class nCyncServer:
     loop: Union[asyncio.AbstractEventLoop, uvloop.Loop]
     _server: Optional[asyncio.Server] = None
     lp: str = "nCync:"
+    start_task: Optional[asyncio.Task] = None
     _instance: Optional['nCyncServer'] = None
 
     def __new__(cls, *args, **kwargs):
@@ -275,6 +276,10 @@ class nCyncServer:
             logger.exception(f"{lp} Error during server shutdown: {e}")
         else:
             logger.info(f"{lp} Server stopped successfully.")
+        finally:
+            if self.start_task and not self.start_task.done():
+                logger.debug(f"{lp} FINISHING: Cancelling start task")
+                self.start_task.cancel()
 
     async def _register_new_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter

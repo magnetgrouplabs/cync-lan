@@ -10,7 +10,17 @@ from typing import Optional
 import uvloop
 
 from cync_lan.cloud_api import CyncCloudAPI
-from cync_lan.const import *
+from cync_lan.const import (
+    CYNC_LOG_NAME,
+    CYNC_VERSION,
+    CYNC_CONFIG_FILE_PATH,
+    EXPORT_SRV_START_TASK_NAME,
+    MQTT_CLIENT_START_TASK_NAME,
+    NCYNC_START_TASK_NAME,
+    LOG_FORMATTER,
+    FOREIGN_LOG_FORMATTER,
+    CYNC_DEBUG,
+)
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
@@ -80,16 +90,20 @@ class CyncLAN:
         if cfg_file.exists():
             g.ncync_server = nCyncServer(await parse_config(cfg_file))
             g.mqtt_client = MQTTClient()
-            tasks.append(asyncio.Task(g.mqtt_client.start(), name="MQTTClient_START"))
-            tasks.append(asyncio.Task(g.ncync_server.start(), name="CyncLanServer_START"))
+            g.ncync_server.start_task = n_start = asyncio.Task(g.mqtt_client.start(), name=MQTT_CLIENT_START_TASK_NAME)
+            g.mqtt_client.start_task = m_start = asyncio.Task(g.ncync_server.start(), name=NCYNC_START_TASK_NAME)
+            tasks.extend([n_start, m_start])
         else:
-            logger.error(f"{lp} Cync config file not found at {cfg_file.as_posix()}. Please visit the ingress page and perform a device export.")
-        if ENABLE_EXPORTER is True:
+            logger.error(
+                f"{lp} Cync config file not found at {cfg_file.as_posix()}. Please migrate "
+                f"an existing config file or visit the ingress page and perform a device export."
+            )
+        if g.cli_args.export_server is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
-            tasks.append(asyncio.Task(g.export_server.start(), name="ExportServer_START"))
+            g.export_server.start_task = x_start = asyncio.Task(g.export_server.start(), name=EXPORT_SRV_START_TASK_NAME)
+            tasks.append(x_start)
 
-        g.tasks.extend(tasks)
         try:
             # the components start() methods have long running tasks of their own
             # TODO: better way to control what tasks are doing what?
@@ -130,18 +144,13 @@ def parse_cli():
         default=None,
         type=Path
     )
-    args = parser.parse_args()
+    g.cli_args = args = parser.parse_args()
 
     if args.debug:
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
         logger.debug("Debug mode enabled via CLI argument")
-    if args.export_server:
-        global ENABLE_EXPORTER
-
-        logger.info("Export server enabled via CLI argument")
-        ENABLE_EXPORTER = True
     if args.env:
         env_path = args.env
         env_path = env_path.expanduser().resolve()

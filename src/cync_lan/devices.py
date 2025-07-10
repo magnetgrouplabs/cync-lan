@@ -980,7 +980,8 @@ class CyncTCPDevice:
             try:
                 self.reader.feed_eof()
                 self.writer.close()
-                await asyncio.wait(self.writer.wait_closed(), 5)
+                task = asyncio.create_task(self.writer.wait_closed())
+                await asyncio.wait([task], timeout=5)
             except asyncio.CancelledError as ce:
                 logger.debug(f"{lp} Task cancelled: {ce}")
                 raise ce
@@ -2026,6 +2027,8 @@ class CyncTCPDevice:
                 async with self.write_lock:
                     self.writer.close()
                     await self.writer.wait_closed()
+        except AttributeError:
+            pass
         except Exception as e:
             logger.exception(f"{lp}writer: EXCEPTION: {e}")
         finally:
@@ -2036,6 +2039,8 @@ class CyncTCPDevice:
                 async with self.read_lock:
                     self.reader.feed_eof()
                     await asyncio.sleep(0.01)
+        except AttributeError:
+            pass
         except Exception as e:
             logger.exception(f"{lp}reader: EXCEPTION: {e}")
         finally:
