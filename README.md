@@ -1,5 +1,7 @@
 # THERE IS NOW A HASS ADD-ON FOR THIS PROJECT!
 
+Huge thanks to @CodeNeedsCoffee for the initial work on the add-on! For the forseeable future, this project will stick with MQTT. The only way to create HASS devices is MQTT or an integration.
+
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fbaudneo%2Fhass-addons)
 
 The existing `python` branch will remain for users who prefer a non HASS add-on setup.
