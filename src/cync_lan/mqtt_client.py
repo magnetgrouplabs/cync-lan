@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 import re
 from json import JSONDecodeError
 from typing import Optional, Union, List, Coroutine, Dict
@@ -359,12 +360,17 @@ class MQTTClient:
                             payload.decode().casefold()
                             == CYNC_HASS_BIRTH_MSG.casefold()
                     ):
+                        birth_delay = random.randint(5, 15)
                         logger.info(
-                            f"{lp} HASS has sent MQTT BIRTH message, re-announcing device discovery, availability and status"
+                            f"{lp} HASS has sent MQTT BIRTH message, re-announcing device discovery, availability and status after a random delay of {birth_delay} seconds..."
                         )
+                        # Give HASS some time to start up, from docs:
+                        # To avoid high IO loads on the MQTT broker, adding some random delay in sending the discovery payload is recommended.
+                        await asyncio.sleep(birth_delay)
                         # register devices
                         await self.homeassistant_discovery()
-                        await asyncio.sleep(0.25)
+                        # give HASS a moment (to register devices)
+                        await asyncio.sleep(2)
                         # set the device online/offline and set its status
                         for device in g.ncync_server.devices.values():
                             await self.pub_online(device.id, device.online)
