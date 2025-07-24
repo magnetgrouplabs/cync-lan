@@ -877,6 +877,7 @@ class MQTTClient:
         mqtt_client_entity_conf["state_topic"] = f"{self.topic}/status/bridge/mqtt_client/connected"
         mqtt_client_entity_conf["unique_id"] = entity_unique_id
         mqtt_client_entity_conf["icon"] = "mdi:connection"
+        mqtt_client_entity_conf["device_class"] = "connectivity"
         ret = await self.publish_json_msg(
             template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
             mqtt_client_entity_conf
