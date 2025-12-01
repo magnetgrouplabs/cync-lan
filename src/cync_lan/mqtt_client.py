@@ -669,6 +669,8 @@ class MQTTClient:
                     }
 
                     entity_registry_struct = {
+                        # retain for older HASS versions
+                        "object_id": obj_id,
                         "default_entity_id": obj_id,
                         # set to None if only device name is relevant, this sets entity name
                         "name": None,
