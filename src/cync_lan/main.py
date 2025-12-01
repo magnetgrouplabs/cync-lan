@@ -73,25 +73,22 @@ class CyncLAN:
     def __init__(self):
         lp = f"{self.lp}init:"
         check_for_uuid()
-        # Ensure event loop is set in the main thread
-        if not asyncio.get_event_loop().is_running():
-            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-            g.loop = asyncio.get_event_loop()
-        else:
-            # If the event loop is already running, handle this case appropriately
-            g.loop = asyncio.get_event_loop()
         logger.debug(
             f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, "
             f"setting up event loop signal handlers for SIGINT & SIGTERM..."
         )
-        g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
-        g.loop.add_signal_handler(signal.SIGTERM, partial(signal_handler, signal.SIGTERM))
 
     async def start(self):
         """Start the Cync LAN server, MQTT client, and Export server."""
         lp = f"{self.lp}start:"
+        g.loop = asyncio.get_event_loop()
+        g.loop.add_signal_handler(signal.SIGINT, partial(signal_handler, signal.SIGINT))
+        g.loop.add_signal_handler(
+            signal.SIGTERM, partial(signal_handler, signal.SIGTERM)
+        )
         self.config_file = cfg_file = Path(CYNC_CONFIG_FILE_PATH).expanduser().resolve()
         tasks = []
+
         if cfg_file.exists():
             g.ncync_server = nCyncServer(await parse_config(cfg_file))
             g.mqtt_client = MQTTClient()
