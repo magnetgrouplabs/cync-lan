@@ -173,7 +173,7 @@ def parse_cli():
                 logger.warning(f"No environment variables were loaded from {env_path}")
 
 
-async def main():
+def main():
     lp = "main:"
     parse_cli()
     if CYNC_DEBUG:
@@ -182,7 +182,6 @@ async def main():
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
     check_python_version()
-
     loop = asyncio.get_event_loop()
     g.cync_lan = CyncLAN()
     g.loop = loop
