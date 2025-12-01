@@ -182,7 +182,8 @@ def main():
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
     check_python_version()
-    loop = asyncio.get_event_loop()
+    loop = uvloop.new_event_loop()
+    asyncio.set_event_loop(loop)
     g.cync_lan = CyncLAN()
     g.loop = loop
     try:
