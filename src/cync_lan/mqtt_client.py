@@ -698,7 +698,7 @@ class MQTTClient:
                     if dev_type == "light":
                         entity_registry_struct.update({"brightness": True, "brightness_scale": 100})
                         if device.supports_temperature or device.supports_rgb:
-                            entity_registry_struct["supported_color_modes"] = []
+                            entity_registry_struct["supported_color_modes"] = ["brightness"]
                             if device.supports_temperature:
                                 entity_registry_struct["supported_color_modes"].append("color_temp")
                                 entity_registry_struct["color_temp_kelvin"] = True
