@@ -4206,6 +4206,7 @@ class MQTTClient:
                     }
                     dev_registry_conf = {
                         "object_id": obj_id,
+                        "default_entity_id": obj_id,
                         # set to None if only device name is relevant, this sets entity name
                         "name": None,
                         "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
