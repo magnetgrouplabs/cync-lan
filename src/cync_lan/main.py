@@ -58,7 +58,7 @@ mqtt_logger.propagate = False
 mqtt_logger.addHandler(foreign_handler)
 # logger.debug(f"{lp} Logging all registered loggers: {logging.getLogger().manager.loggerDict.keys()}")
 g = GlobalObject()
-
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 class CyncLAN:
     lp: str = "CyncLAN:"
@@ -173,7 +173,7 @@ def parse_cli():
                 logger.warning(f"No environment variables were loaded from {env_path}")
 
 
-def main():
+async def main():
     lp = "main:"
     parse_cli()
     if CYNC_DEBUG:
@@ -182,10 +182,12 @@ def main():
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
     check_python_version()
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+    loop = asyncio.get_event_loop()
     g.cync_lan = CyncLAN()
+    g.loop = loop
     try:
-        asyncio.get_event_loop().run_until_complete(g.cync_lan.start())
+        loop.run_until_complete(g.cync_lan.start())
     except asyncio.CancelledError as e:
         logger.info(f"{lp} CyncLAN async stack cancelled: {e}")
     except KeyboardInterrupt:
@@ -195,5 +197,6 @@ def main():
     else:
         logger.info(f"{lp} CyncLAN stack stopped gracefully, bye!")
     finally:
-        if not g.loop.is_closed():
-            g.loop.close()
+        if g.loop is not None:
+            if not g.loop.is_closed():
+                g.loop.close()
