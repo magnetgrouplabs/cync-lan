@@ -73,8 +73,13 @@ class CyncLAN:
     def __init__(self):
         lp = f"{self.lp}init:"
         check_for_uuid()
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        g.loop = asyncio.get_event_loop()
+        # Ensure event loop is set in the main thread
+        if not asyncio.get_event_loop().is_running():
+            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+            g.loop = asyncio.get_event_loop()
+        else:
+            # If the event loop is already running, handle this case appropriately
+            g.loop = asyncio.get_event_loop()
         logger.debug(
             f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, "
             f"setting up event loop signal handlers for SIGINT & SIGTERM..."
@@ -180,6 +185,7 @@ def main():
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)
     check_python_version()
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     g.cync_lan = CyncLAN()
     try:
         asyncio.get_event_loop().run_until_complete(g.cync_lan.start())
