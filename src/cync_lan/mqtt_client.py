@@ -779,6 +779,7 @@ class MQTTClient:
         restart_btn_entity_struct = {
             "platform": "button",
             # obj_id is to link back to the bridge device
+            "object_id": CYNC_BRIDGE_OBJ_ID + "_restart",
             "default_entity_id": CYNC_BRIDGE_OBJ_ID + "_restart",
             "command_topic": f"{self.topic}/set/bridge/restart",
             "state_topic": f"{self.topic}/status/bridge/restart",
@@ -830,6 +831,7 @@ class MQTTClient:
         entity_type = "binary_sensor"
         entity_unique_id = f"{bridge_base_unique_id}_tcp_server_running"
         tcp_server_entity_conf = {
+            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "name": "nCync TCP Server Running",
             "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
@@ -892,6 +894,7 @@ class MQTTClient:
         entity_unique_id = f"{bridge_base_unique_id}_otp_input"
         otp_num_entity_cfg = {
             "platform": "number",
+            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "icon": "mdi:lock",
             "command_topic": f"{self.topic}/set/bridge/otp/input",
@@ -904,7 +907,7 @@ class MQTTClient:
             "max": 999999,
             "mode": "box",
             "name": "Cync emailed OTP",
-            "unique_id": entity_unique_id
+            "unique_id": entity_unique_id,
         }
         ret = await self.publish_json_msg(
             template_tpc.format(self.ha_topic, entity_type, entity_unique_id),
@@ -918,6 +921,7 @@ class MQTTClient:
         entity_unique_id = f"{bridge_base_unique_id}_connected_tcp_devices"
         num_tcp_devices_entity_conf = {
             "platform": "sensor",
+            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "name": "TCP Devices Connected",
             "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
