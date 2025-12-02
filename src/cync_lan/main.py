@@ -58,7 +58,6 @@ mqtt_logger.propagate = False
 mqtt_logger.addHandler(foreign_handler)
 # logger.debug(f"{lp} Logging all registered loggers: {logging.getLogger().manager.loggerDict.keys()}")
 g = GlobalObject()
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 class CyncLAN:
     lp: str = "CyncLAN:"
