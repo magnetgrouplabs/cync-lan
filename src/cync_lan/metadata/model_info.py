@@ -127,6 +127,12 @@ device_type_map = {
         model_id=None,
         capabilities=LightCapabilities(tunable_white=True),
     ),
+    17: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Dimmable Light (Unknown - BTLE only)",
+        model_id=None,
+        capabilities=LightCapabilities(tunable_white=False),
+    ),  
     19: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White A19 Bulb",
