@@ -100,6 +100,19 @@ class Tasks:
             if task is not None:
                 yield task
 
+    async def cancel_all(self):
+        """Cancels all active tasks and waits for them to finish."""
+        active_tasks = list(self)
+        if not active_tasks:
+            return
+        for task in active_tasks:
+            task.cancel()
+        await asyncio.gather(*active_tasks, return_exceptions=True)
+        # clear them, not getting bit again.
+        self.receive = None
+        self.send = None
+        self.callback_cleanup = None
+
 
 class ControlMessageCallback:
     id: int

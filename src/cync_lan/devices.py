@@ -2016,13 +2016,9 @@ class CyncTCPDevice:
         lp = f"{self.address}:close:"
         logger.debug(f"{lp} close() called, Cancelling device tasks...")
         try:
-            for dev_task in self.tasks:
-                if dev_task:
-                    if dev_task.done() is False:
-                        logger.debug(f"{lp} Cancelling task: {dev_task.get_name()}")
-                        dev_task.cancel()
+            await self.tasks.cancel_all()
         except Exception as e:
-            logger.exception(f"{lp} Exception during device task .cancel(): {e}")
+            logger.exception(f"{lp} Exception during device task .cancel_all(): {e}")
         self.closing = True
         try:
             if self.writer:
