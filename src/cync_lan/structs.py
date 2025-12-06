@@ -95,7 +95,10 @@ class Tasks:
     callback_cleanup: Optional[asyncio.Task] = None
 
     def __iter__(self):
-        return iter([self.receive, self.send, self.callback_cleanup])
+        tasks = [self.receive, self.send, self.callback_cleanup]
+        for task in tasks:
+            if task is not None:
+                yield task
 
 
 class ControlMessageCallback:
