@@ -245,8 +245,8 @@ device_type_map = {
     ),
     39: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
-        model_name="Bulb",
-        model_id=None,
+        model_name="Paddle Switch",
+        model_id=" CSWONBLPWF1",
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(),
     ),
@@ -264,7 +264,7 @@ device_type_map = {
     ),
     48: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
-        model_name="C by GE (C Start Smart) Switch",
+        model_name="C by GE (C Start Smart) Paddle Switch",
         model_id="CSWDMBLBWF1",
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(),
@@ -290,7 +290,8 @@ device_type_map = {
     ),
     57: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
-        model_name="Switch - No Neutral",
+        model_name="Paddle Switch - No Neutral",
+        model_id="CSWONBLPWF1NN",
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(),
     ),
