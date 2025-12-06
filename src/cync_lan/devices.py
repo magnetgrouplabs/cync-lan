@@ -373,7 +373,7 @@ class CyncDevice:
                 # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
                 pass
             elif self.is_light or self.is_switch:
-                logger.error(f"{lp} Invalid brightness! must be 0-100")
+                logger.error(f"{lp} Invalid brightness: {bri} must be 0-100")
                 return
 
 
