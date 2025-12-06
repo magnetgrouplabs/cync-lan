@@ -641,6 +641,11 @@ class MQTTClient:
             try:
                 for device in g.ncync_server.devices.values():
                     device_uuid = device.hass_id
+                    supported = device.metadata.supported
+                    if not supported:
+                        logger.warning(f"{lp} Device '{device.name}' (ID: {device.id} / Type: {device.type}) is not supported, skipping HASS discovery...")
+                        continue
+
                     unique_id = f"{device.home_id}_{device.id}"
                     obj_id = f"cync_lan_{unique_id}"
                     dev_fw_version = str(device.version)

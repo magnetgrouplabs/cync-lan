@@ -49,6 +49,7 @@ class DeviceTypeInfo:
     protocol: DeviceProtocol = Field(default_factory=DeviceProtocol)
     capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
     characteristics: Optional[LightCharacteristics] = None
+    supported: bool = Field(default=True, description="Whether this device type is supported")
 
     @property
     def model_string(self) -> str:
@@ -369,6 +370,7 @@ device_type_map = {
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
         capabilities=SwitchCapabilities(dimmable=True),
+        supported=False
     ),
     129: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
