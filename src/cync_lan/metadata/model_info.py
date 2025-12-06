@@ -136,7 +136,7 @@ device_type_map = {
     ),
     18: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
-        model_name="Dimmable Light (Unknown - BTLE only)",
+        model_name="White Dimmable Light (2700K - BTLE only)",
         model_id="CLED199L2",
         capabilities=LightCapabilities(tunable_white=False),
         characteristics=LightCharacteristics(min_kelvin=2700),
