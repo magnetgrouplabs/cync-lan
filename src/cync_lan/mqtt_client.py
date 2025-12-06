@@ -464,7 +464,7 @@ class MQTTClient:
         device.state = state
         power_status = "OFF" if state == 0 else "ON"
         mqtt_dev_state = {"state": power_status}
-        if device.is_plug:
+        if device.is_plug or device.is_switch:
             mqtt_dev_state = power_status.encode()  # send ON or OFF if plug
         else:
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()  # send JSON
@@ -557,7 +557,7 @@ class MQTTClient:
         power_status = "OFF" if device_status.state == 0 else "ON"
         mqtt_dev_state: Dict[str, Union[int, str, bytes]] = {"state": power_status}
 
-        if device.is_plug:
+        if device.is_plug or device.is_switch:
             mqtt_dev_state = power_status.encode()
 
         else:
