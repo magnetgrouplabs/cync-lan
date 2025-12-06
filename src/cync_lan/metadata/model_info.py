@@ -132,7 +132,15 @@ device_type_map = {
         model_name="Dimmable Light (Unknown - BTLE only)",
         model_id=None,
         capabilities=LightCapabilities(tunable_white=False),
-    ),  
+        characteristics=LightCharacteristics(min_kelvin=2700),
+    ),
+    18: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Dimmable Light (Unknown - BTLE only)",
+        model_id="CLED199L2",
+        capabilities=LightCapabilities(tunable_white=False),
+        characteristics=LightCharacteristics(min_kelvin=2700),
+    ),
     19: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White A19 Bulb",
