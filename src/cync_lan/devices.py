@@ -1,18 +1,15 @@
 import asyncio
+import datetime
 import logging
 import random
 import time
-import datetime
-from functools import lru_cache
-from typing import Optional, Union, List, Dict, Coroutine
-
-from pydantic.dataclasses import dataclass
+from typing import Optional, Union, List, Coroutine
 
 from cync_lan.const import *
 from cync_lan.metadata.model_info import DeviceTypeInfo, device_type_map, DeviceClassification
-from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 from cync_lan.structs import GlobalObject, Tasks, ControlMessageCallback, Messages, CacheData, DeviceStatus, MeshInfo, \
-        PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS, FanSpeed
+    PhoneAppStructs, DEVICE_STRUCTS, ALL_HEADERS, FanSpeed
+from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 
 __all__ = [
     "CyncDevice",
@@ -178,7 +175,8 @@ class CyncDevice:
             return self._is_plug
         if self.metadata:
             if self.metadata.type == DeviceClassification.SWITCH:
-                return self.metadata.capabilities.plug
+                if self.metadata.capabilities:
+                    return self.metadata.capabilities.plug
         return False
 
     @is_plug.setter
@@ -191,7 +189,8 @@ class CyncDevice:
             return self._is_fan_controller
         if self.metadata:
             if self.metadata.type == DeviceClassification.SWITCH:
-                return self.metadata.capabilities.fan
+                if self.metadata.capabilities:
+                    return self.metadata.capabilities.fan
         return False
 
     @is_fan_controller.setter
@@ -202,7 +201,8 @@ class CyncDevice:
     def is_dimmable(self) -> bool:
         if self.metadata:
             if self.metadata.type == DeviceClassification.LIGHT:
-                return self.metadata.capabilities.dimmable
+                if self.metadata.capabilities:
+                    return self.metadata.capabilities.dimmable
         return False
 
     @property
@@ -211,7 +211,8 @@ class CyncDevice:
             return self._supports_rgb
         if self.metadata:
             if self.metadata.type == DeviceClassification.LIGHT:
-                return self.metadata.capabilities.color
+                if self.metadata.capabilities:
+                    return self.metadata.capabilities.color
         return False
 
     @supports_rgb.setter
@@ -224,7 +225,8 @@ class CyncDevice:
             return self._supports_temperature
         if self.metadata:
             if self.metadata.type == DeviceClassification.LIGHT:
-                return self.metadata.capabilities.tunable_white
+                if self.metadata.capabilities:
+                    return self.metadata.capabilities.tunable_white
         return False
 
     @supports_temperature.setter
