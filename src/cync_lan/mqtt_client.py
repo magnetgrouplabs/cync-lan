@@ -709,13 +709,13 @@ class MQTTClient:
                                 entity_registry_struct["supported_color_modes"].append("rgb")
                                 entity_registry_struct["effect"] = True
                                 entity_registry_struct["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
-                            if not entity_registry_struct["supported_color_modes"]:
-                                entity_registry_struct["supported_color_modes"].append("brightness")
-                            else:
-                                # add brightness : True only when supported_color_modes are present
-                                entity_registry_struct.update(
-                                    {"brightness": True, "brightness_scale": 100}
-                                )
+                        if not entity_registry_struct["supported_color_modes"]:
+                            entity_registry_struct["supported_color_modes"].append("brightness")
+                        else:
+                            # add brightness : True only when supported_color_modes are present
+                            entity_registry_struct.update(
+                                {"brightness": True, "brightness_scale": 100}
+                            )
                     elif dev_type == "fan":
                         entity_registry_struct["platform"] = "fan"
                         # fan can be controlled via light control structs: brightness -> max=255, high=191, medium=128, low=50, off=0
