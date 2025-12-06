@@ -699,6 +699,7 @@ class MQTTClient:
 
                     if dev_type == "light":
                         entity_registry_struct["supported_color_modes"] = []
+                        entity_registry_struct.update({"brightness_scale": 100})
                         if device.supports_temperature or device.supports_rgb:
                             if device.supports_temperature:
                                 entity_registry_struct["supported_color_modes"].append("color_temp")
@@ -710,11 +711,10 @@ class MQTTClient:
                                 entity_registry_struct["effect"] = True
                                 entity_registry_struct["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
                             # add brightness : True only when supported_color_modes are present
-                            entity_registry_struct.update(
-                                {"brightness": True, "brightness_scale": 100}
-                            )
+                            entity_registry_struct.update({"brightness": True})
                         if not entity_registry_struct["supported_color_modes"]:
                             entity_registry_struct["supported_color_modes"].append("brightness")
+
 
                     elif dev_type == "fan":
                         entity_registry_struct["platform"] = "fan"
