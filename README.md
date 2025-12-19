@@ -102,7 +102,7 @@ breakdown. Please see the
 | `CYNC_KEY`               | Path to key file                                  | `certs/server.key`    | str  |
 | `CYNC_PORT`              | Port to listen on (shouldn't need to change)      | `23779`               | int  |
 | `CYNC_HOST`              | Interface to listen on                            | `0.0.0.0`             | str  |
-| `CYNC_TOPIC`             | MQTT topic                                        | `cync_lan`            | str  |
+| `CYNC_TOPIC`             | MQTT topic                                        | `cync_lan_addon`      | str  |
 | `CYNC_HASS_TOPIC`        | Home Assistant topic                              | `homeassistant`       | str  |
 | `CYNC_HASS_STATUS_TOPIC` | HASS status topic for birth / will                | `status`              | str  |
 | `CYNC_HASS_BIRTH_MSG`    | HASS birth message                                | `online`              | str  |
