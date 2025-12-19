@@ -4,6 +4,7 @@ import logging
 import random
 import time
 from typing import Optional, Union, List, Coroutine
+from functools import partial
 
 from cync_lan.const import *
 from cync_lan.metadata.model_info import DeviceTypeInfo, device_type_map, DeviceClassification
@@ -311,7 +312,7 @@ class CyncDevice:
                 inner_struct[-2] = checksum
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_device_state(self, state))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=partial(g.mqtt_client.update_device_state, self, state))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 sent[bridge_device.address] = cmsg_id
                 tasks.append(bridge_device.write(payload_bytes))
@@ -430,7 +431,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_brightness(self, bri))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=partial(g.mqtt_client.update_brightness, self, bri))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(payload_bytes))
             else:
@@ -516,7 +517,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 payload_bytes = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=g.mqtt_client.update_temperature(self, temp))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=payload_bytes, sent_at=time.time(), callback=partial(g.mqtt_client.update_temperature, self, temp))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(payload_bytes))
             else:
@@ -610,7 +611,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=g.mqtt_client.update_rgb(self, _rgb))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=partial(g.mqtt_client.update_rgb, self, _rgb))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
             else:
@@ -745,7 +746,7 @@ class CyncDevice:
                 payload.extend(inner_struct)
                 bpayload = bytes(payload)
                 sent[bridge_device.address] = cmsg_id
-                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=asyncio.sleep(0))
+                m_cb = ControlMessageCallback(msg_id=cmsg_id, message=bpayload, sent_at=time.time(), callback=partial(asyncio.sleep, 0))
                 bridge_device.messages.control[cmsg_id] = m_cb
                 tasks.append(bridge_device.write(bpayload))
             else:
