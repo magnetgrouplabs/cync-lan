@@ -555,7 +555,7 @@ class MQTTClient:
         #     # logger.debug(f"{lp} Device status unchanged, skipping...")
         #     return
         power_status = "OFF" if device_status.state == 0 else "ON"
-        mqtt_dev_state: Dict[str, Union[int, str, bytes]] = {"state": power_status}
+        mqtt_dev_state: Union[Dict[str, Union[int, str, bytes, dict, list]], bytes] = {"state": power_status}
 
         if device.is_plug or device.is_switch:
             mqtt_dev_state = power_status.encode()
