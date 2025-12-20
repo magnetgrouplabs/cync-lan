@@ -1741,7 +1741,10 @@ class CyncTCPDevice:
                                     success = packet_data[7] == 1
                                     msg = self.messages.control.pop(ctrl_msg_id, None)
                                     if success is True and msg is not None:
-                                        await msg.callback
+                                        if callable(msg.callback):
+                                            await msg.callback()
+                                        else:
+                                            await msg.callback
                                     elif success is True and msg is None:
                                         logger.debug(f"{lp} CONTROL packet ACK (success: {success} / chksum: {ctrl_chksum == packet_data[10]}) callback NOT found for msg ID: {ctrl_msg_id}")
                                 # newer firmware devices seen in led light strip so far,
