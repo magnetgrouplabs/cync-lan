@@ -251,17 +251,26 @@ device_type_map = {
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(),
     ),
+    41: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Reveal HD+ Full Color Under Cabinet Light - 12 Inch",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(color=True, tunable_white=True),
+        characteristics=LightCharacteristics(lumens=750),
+    ),
     42: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Reveal HD+ Full Color Under Cabinet Light - 18 Inch",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(color=True, tunable_white=True),
+        characteristics=LightCharacteristics(lumens=1150),
     ),
     43: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Reveal HD+ Full Color Under Cabinet Light - 24 Inch",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(color=True, tunable_white=True),
+        characteristics=LightCharacteristics(lumens=1500),
     ),
     48: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
