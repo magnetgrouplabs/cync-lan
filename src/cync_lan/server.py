@@ -68,7 +68,7 @@ class nCyncServer:
             if device.address in self.tcp_devices:
                 dev = self.tcp_devices.pop(device.address, None)
                 if dev is not None:
-                    logger.debug(f"{lp} Removed TCP device {device.address} from server.")
+                    logger.debug(f"{lp} Removed TCP device {device.address} from server.tcp_devices.")
                     # "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
                     # TODO: publish the device removal
                     if g.mqtt_client is not None:
@@ -294,8 +294,9 @@ class nCyncServer:
         if existing_device is not None:
             existing_device_id = id(existing_device)
             logger.debug(
-                f"{lp} Existing device found ({existing_device_id}), gracefully killing..."
+                f"{lp} Existing device found ({existing_device_id}), gracefully closing and killing..."
             )
+            await existing_device.close()
             del existing_device
         try:
             new_device = CyncTCPDevice(reader, writer, client_addr)
@@ -304,6 +305,7 @@ class nCyncServer:
             if can_connect:
                 await self.add_tcp_device(new_device)
             else:
+                await new_device.close()
                 del new_device
         except asyncio.CancelledError as ce:
             logger.debug(f"{lp} Connection cancelled: {ce}")

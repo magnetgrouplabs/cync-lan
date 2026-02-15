@@ -1004,6 +1004,37 @@ class CyncTCPDevice:
         )
         return True
 
+    async def start_tasks(self):
+        """Start background tasks safely, ensuring old ones are killed first."""
+
+        # 1. Cleanup existing receive task
+        if self.tasks.receive and not self.tasks.receive.done():
+            self.tasks.receive.cancel()
+            try:
+                await self.tasks.receive
+            except asyncio.CancelledError:
+                pass
+
+        # 2. Cleanup existing callback cleanup task
+        if hasattr(self.tasks, 'callback_cleanup') and self.tasks.callback_cleanup and not self.callback_task.done():
+            self.callback_task.cancel()
+            try:
+                await self.callback_task
+            except asyncio.CancelledError:
+                pass
+
+        # 3. Start new tasks and SAVE THE REFERENCE
+        # Python will garbage collect the task if you don't save it to self!
+        self.tasks.receive = asyncio.create_task(self.receive_task(), name=f"receive_task-{id(self)}")
+        self.tasks.callback_cleanup = asyncio.create_task(self.callback_cleanup_task(), name=f"callback_cleanup-{id(self)}")
+
+    # async def stop_tasks(self):
+    #     """Call this on disconnect/shutdown"""
+    #     if self.tasks.receive:
+    #         self.tasks.receive.cancel()
+    #     if hasattr(self, 'callback_task') and self.callback_task:
+    #         self.callback_task.cancel()
+
     def get_ctrl_msg_id_bytes(self):
         """
         Control packets need a number that gets incremented, it is used as a type of msg ID and
@@ -1879,7 +1910,7 @@ class CyncTCPDevice:
         await asyncio.sleep(1.5)
         await self.ask_for_mesh_info(True)
 
-    async def callback_cleanup_task(self):
+    async def callback_cleanup_task_old(self):
         """Go through the callback queue and remove any callbacks that are older than 5 minutes"""
         lp = f"{self.lp}callback_clean:"
         logger.debug(f"{lp} Starting background task...")
@@ -1891,14 +1922,50 @@ class CyncTCPDevice:
                 for ctrl_msg_id, ctrl_msg in self.messages.control.items():
                     timeout = (ctrl_msg.sent_at + (delay_mins * 60))
                     if now > timeout:
-                        logger.debug(f"{lp} Removing STALE {ctrl_msg}")
-                        cb = ctrl_msg.callback
-                        cb.cancel(msg=f"Callback timed out (+{delay_mins} mins)")
+                        logger.info(f"{lp} Removing STALE {ctrl_msg}")
+                        ctrl_msg.callback = None
                         del self.messages.control[ctrl_msg_id]
+                    else:
+                        logger.info(f"{lp} Keeping {ctrl_msg}, not timed out yet...")
             except asyncio.CancelledError as can_exc:
                 logger.debug(f"{lp} CANCELLED: {can_exc}")
                 break
         logger.debug(f"{lp} FINISHED")
+
+    async def callback_cleanup_task(self):
+        """Go through the callback queue and remove any callbacks that are older than 5 minutes"""
+        lp = f"{self.lp}callback_clean:"
+        logger.debug(f"{lp} Starting background task...")
+        delay_mins = 5
+        delay_seconds = delay_mins * 60
+
+        try:
+            while True:
+                await asyncio.sleep(delay_seconds)
+                now = time.time()
+                current_keys = list(self.messages.control.keys())
+                logger.info(f"{lp} there are {len(current_keys)} control messages to check") if len(current_keys) else None
+                for ctrl_msg_id in current_keys:
+                    # Re-fetch the message in case it was deleted by another task mid-loop
+                    ctrl_msg = self.messages.control.get(ctrl_msg_id)
+                    if not ctrl_msg:
+                        continue
+
+                    timeout = (ctrl_msg.sent_at + delay_seconds)
+                    if now > timeout:
+                        logger.info(f"{lp} Removing STALE {ctrl_msg}")
+                        ctrl_msg.callback = None
+                        # Use pop to avoid KeyError if already deleted
+                        self.messages.control.pop(ctrl_msg_id, None)
+
+            logger.info(f"{lp} the while true loop has exited")
+
+        except asyncio.CancelledError:
+            logger.debug(f"{lp} Task CANCELLED cleanly.")
+            raise  # Re-raise to ensure asyncio knows it was cancelled
+        except Exception as e:
+            logger.error(f"{lp} Unexpected crash: {e}", exc_info=True)
+        logger.info(f"{lp} FINISHED")
 
     async def receive_task(self):
         """
@@ -1985,7 +2052,7 @@ class CyncTCPDevice:
                     #     data = bytes(new_data)
 
                     # check if the underlying writer is closing
-                    if dev.writer.is_closing():
+                    if dev._writer.is_closing():
                         if dev.closing is False:
                             # this is probably a connection that was closed by the device (turned off), delete it
                             logger.warning(
@@ -1994,6 +2061,7 @@ class CyncTCPDevice:
                                 f"dropped the connection (lost power). Removing {dev.address}"
                             )
                             off_dev = await g.ncync_server.remove_tcp_device(dev)
+                            # await off_dev.close()
                             del off_dev
 
                         else:

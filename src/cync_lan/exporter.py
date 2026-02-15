@@ -212,7 +212,6 @@ class ExportServer:
         else:
             self.running = False
         finally:
-            # TODO: publish MQTT message indicating the export server status
             if g.mqtt_client:
                 await g.mqtt_client.publish(
                     f"{g.env.mqtt_topic}/status/bridge/export_server/running",
