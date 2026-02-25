@@ -1,0 +1,44 @@
+services:
+  cync-lan:
+    container_name: cync-lan
+    image: baudneo/cync-lan:latest
+    restart: unless-stopped
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: .
+    ports:
+      - "23779:23779"
+      # local export server for cync-lan: http://localhost:23778 then click the 'start_export' button
+      - "23778:23778"
+    volumes:
+      # Create a ./config dir and place the exported config file in this directory
+      - ./config:/root/cync-lan/config
+    environment:
+      CYNC_PERSISTENT_BASE_DIR: "/root/cync-lan/config"
+      TZ: "America/Chicago"
+      # disable the local webserver to export devices [default: on]
+#      CYNC_ENABLE_EXPORTER: 0
+#      CYNC_MQTT_HOST: "homeassistant.local"
+#      CYNC_MQTT_PORT: 1833
+#      CYNC_MQTT_USER: "username"
+#      CYNC_MQTT_PASS: "password"
+#      CYNC_TOPIC: "cync_lan"
+#      CYNC_HASS_TOPIC: "homeassistant"
+      # Whenever cync-lan is d/c from mqtt broker, it will wait this long before trying to reconnect.
+#      CYNC_MQTT_CONN_DELAY: 10
+      # How many TCP devices to send a state change command to. useful for tuning.
+#      CYNC_CMD_BROADCASTS: 2
+      # Limit the maximum number of Wi-Fi Cync devices that can connect at once
+#      CYNC_MAX_TCP_CONN: 8
+      # Comma separated list of IPs to allow connecting to the CyncLAN server.
+#      CYNC_TCP_WHITELIST: ""
+    # Debug logging
+#      CYNC_DEBUG: 1
+    # Raw binary data logging
+#      CYNC_RAW_DEBUG: 1
+    networks:
+      - cync-lan
+
+networks:
+    cync-lan:
+        driver: bridge
