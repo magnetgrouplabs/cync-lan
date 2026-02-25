@@ -4,6 +4,7 @@ from typing import Annotated, Optional, Union
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 
+
 class DeviceClassification(StrEnum):
     LIGHT = "light"
     SWITCH = "switch"
@@ -11,12 +12,14 @@ class DeviceClassification(StrEnum):
     BRIDGE = "bridge"
     UNKNOWN = "unknown"
 
+
 @dataclass
 class SwitchCapabilities:
     power: bool = True
     dimmable: bool = False
     fan: bool = False
     plug: bool = False
+
 
 @dataclass
 class LightCapabilities:
@@ -34,6 +37,7 @@ class DeviceProtocol:
     TCP: bool = False
     MATTER: bool = False
 
+
 @dataclass
 class LightCharacteristics:
     min_kelvin: Optional[Annotated[int, Field(ge=2000, le=7000)]] = None
@@ -49,7 +53,9 @@ class DeviceTypeInfo:
     protocol: DeviceProtocol = Field(default_factory=DeviceProtocol)
     capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
     characteristics: Optional[LightCharacteristics] = None
-    supported: bool = Field(default=True, description="Whether this device type is supported")
+    supported: bool = Field(
+        default=True, description="Whether this device type is supported"
+    )
 
     @property
     def model_string(self) -> str:
@@ -65,7 +71,10 @@ class DeviceTypeInfo:
                         add_str += " "
                     add_str += f"{self.characteristics.lumens} lum"
                 if self.characteristics.min_kelvin:
-                    if self.characteristics.min_kelvin and self.characteristics.max_kelvin:
+                    if (
+                        self.characteristics.min_kelvin
+                        and self.characteristics.max_kelvin
+                    ):
                         kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
                     else:
                         kelvin_data = f"{self.characteristics.min_kelvin}K"
@@ -379,7 +388,7 @@ device_type_map = {
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
         capabilities=SwitchCapabilities(dimmable=True),
-        supported=False
+        supported=False,
     ),
     129: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,

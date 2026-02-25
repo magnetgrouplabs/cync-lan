@@ -13,7 +13,7 @@ import uvloop
 from pydantic import BaseModel, ConfigDict, computed_field
 from pydantic.dataclasses import dataclass
 
-from cync_lan.const import *
+from cync_lan.const import YES_ANSWER, CYNC_LOG_NAME
 
 if TYPE_CHECKING:
     from cync_lan.exporter import ExportServer
@@ -44,9 +44,12 @@ class GlobalObjEnv(BaseModel):
     mqtt_hass_birth_msg: Optional[str] = None
     mqtt_hass_will_msg: Optional[str] = None
     cync_srv_host: Optional[str] = None
+    cync_export_host: Optional[str] = None
+    enable_export_server: Optional[bool] = None
     cync_srv_ssl_cert: Optional[str] = None
     cync_srv_ssl_key: Optional[str] = None
-    persistent_base_dir: Optional[str] = None
+    appended_config_dir: Optional[str] = None
+    base_dir: Optional[str] = None
 
 
 class GlobalObject:
@@ -71,15 +74,22 @@ class GlobalObject:
     def reload_env(self):
         """Re-evaluate environment variables to update constants."""
         global CYNC_MQTT_HOST, CYNC_MQTT_PORT, CYNC_MQTT_USER, CYNC_MQTT_PASS
-        global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC
-        global CYNC_HASS_BIRTH_MSG, CYNC_HASS_WILL_MSG, CYNC_SRV_HOST
+        global CYNC_TOPIC, CYNC_HASS_TOPIC, CYNC_HASS_STATUS_TOPIC, CYNC_BASE_DIR
+        global \
+            CYNC_HASS_BIRTH_MSG, \
+            CYNC_HASS_WILL_MSG, \
+            CYNC_SRV_HOST, \
+            CYNC_EXPORT_HOST, \
+            CYNC_ENABLE_EXPORTER
         global \
             CYNC_SSL_CERT, \
             CYNC_SSL_KEY, \
             CYNC_ACCOUNT_USERNAME, \
             CYNC_ACCOUNT_PASSWORD, \
-            PERSISTENT_BASE_DIR
-
+            PERSISTENT_DIR
+        self.env.base_dir = CYNC_BASE_DIR = os.environ.get(
+            "CYNC_BASE_DIR", "/root/cync-lan"
+        )
         self.env.account_username = CYNC_ACCOUNT_USERNAME = os.environ.get(
             "CYNC_ACCOUNT_USERNAME", None
         )
@@ -94,7 +104,7 @@ class GlobalObject:
         )
         self.env.mqtt_user = CYNC_MQTT_USER = os.environ.get("CYNC_MQTT_USER")
         self.env.mqtt_pass = CYNC_MQTT_PASS = os.environ.get("CYNC_MQTT_PASS")
-        self.env.mqtt_topic = CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan_NEW")
+        self.env.mqtt_topic = CYNC_TOPIC = os.environ.get("CYNC_TOPIC", "cync_lan")
         self.env.mqtt_hass_topic = CYNC_HASS_TOPIC = os.environ.get(
             "CYNC_HASS_TOPIC", "homeassistant"
         )
@@ -110,14 +120,20 @@ class GlobalObject:
         self.env.cync_srv_host = CYNC_SRV_HOST = os.environ.get(
             "CYNC_SRV_HOST", "0.0.0.0"
         )
+        self.env.cync_export_host = CYNC_EXPORT_HOST = os.environ.get(
+            "CYNC_EXPORT_HOST", CYNC_SRV_HOST
+        )
+        self.env.enable_export_server = CYNC_ENABLE_EXPORTER = (
+            os.environ.get("CYNC_ENABLE_EXPORT", "0").casefold() in YES_ANSWER
+        )
         self.env.cync_srv_ssl_cert = CYNC_SSL_CERT = os.environ.get(
-            "CYNC_SSL_CERT", f"{CYNC_BASE_DIR}/cync-lan/certs/cert.pem"
+            "CYNC_DEVICE_CERT", f"{CYNC_BASE_DIR}/certs/cert.pem"
         )
         self.env.cync_srv_ssl_key = CYNC_SSL_KEY = os.environ.get(
-            "CYNC_SSL_KEY", f"{CYNC_BASE_DIR}/cync-lan/certs/key.pem"
+            "CYNC_DEVICE_KEY", f"{CYNC_BASE_DIR}/certs/key.pem"
         )
-        self.env.persistent_base_dir = PERSISTENT_BASE_DIR = os.environ.get(
-            "CYNC_PERSISTENT_BASE_DIR", "/homeassistant/.storage/cync-lan/config"
+        self.env.appended_config_dir = PERSISTENT_DIR = os.environ.get(
+            "CYNC_CONFIG_DIR", "/config"
         )
 
 

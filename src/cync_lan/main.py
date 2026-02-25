@@ -16,10 +16,11 @@ from cync_lan.const import (
     CYNC_CONFIG_FILE_PATH,
     EXPORT_SRV_START_TASK_NAME,
     MQTT_CLIENT_START_TASK_NAME,
-    NCYNC_START_TASK_NAME,
+    nCYNC_START_TASK_NAME,
     LOG_FORMATTER,
     FOREIGN_LOG_FORMATTER,
-    CYNC_DEBUG, ENABLE_EXPORTER,
+    CYNC_DEBUG,
+    CYNC_ENABLE_EXPORTER,
 )
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
@@ -104,7 +105,7 @@ class CyncLAN:
                 g.mqtt_client.start(), name=MQTT_CLIENT_START_TASK_NAME
             )
             g.mqtt_client.start_task = m_start = asyncio.Task(
-                g.ncync_server.start(), name=NCYNC_START_TASK_NAME
+                g.ncync_server.start(), name=nCYNC_START_TASK_NAME
             )
             tasks.extend([n_start, m_start])
         else:
@@ -112,9 +113,7 @@ class CyncLAN:
                 f"{lp} Cync config file not found at {cfg_file.as_posix()}. Please migrate "
                 f"an existing config file or visit the ingress page and perform a device export."
             )
-        if g.cli_args.export_server is True:
-            ENABLE_EXPORTER = True
-        if ENABLE_EXPORTER is True:
+        if CYNC_ENABLE_EXPORTER is True:
             g.cloud_api = CyncCloudAPI()
             g.export_server = ExportServer()
             g.export_server.start_task = x_start = asyncio.Task(
@@ -194,7 +193,7 @@ def main():
     lp = "main:"
     parse_cli()
     if CYNC_DEBUG:
-        logger.info(f"{lp} Add-on config has set logging level to: Debug")
+        logger.info(f"{lp} App config has set logging level to: Debug")
         logger.setLevel(logging.DEBUG)
         for handler in logger.handlers:
             handler.setLevel(logging.DEBUG)

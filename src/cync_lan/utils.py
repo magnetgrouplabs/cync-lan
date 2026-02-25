@@ -14,7 +14,7 @@ import yaml
 from cync_lan.const import (
     CYNC_LOG_NAME,
     CYNC_UUID_PATH,
-    PERSISTENT_BASE_DIR,
+    CYNC_CONFIG_DIR,
     YES_ANSWER,
     LOCAL_TZ,
 )
@@ -250,10 +250,10 @@ def check_python_version():
 
 
 def check_for_uuid():
-    """Check if this is the first run of the Cync LAN server, if so, create the CYNC_ADDON_UUID (UUID4)"""
+    """Check if this is the first run of the Cync LAN server, if so, create UUID4"""
     lp = "check_uuid:"
     # create dir for cync_mesh.yaml and variable data if it does not exist
-    persistent_dir = Path(PERSISTENT_BASE_DIR).expanduser().resolve()
+    persistent_dir = Path(CYNC_CONFIG_DIR).expanduser().resolve()
     if not persistent_dir.exists():
         try:
             persistent_dir.mkdir(parents=True, exist_ok=True)

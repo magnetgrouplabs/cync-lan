@@ -6,7 +6,18 @@ import time
 from typing import Optional, Union, List, Coroutine
 from functools import partial
 
-from cync_lan.const import *
+from cync_lan.const import (
+    CYNC_CMD_BROADCASTS,
+    CYNC_LOG_NAME,
+    STREAM_CHUNK_SIZE,
+    CYNC_RAW,
+    RAW_MSG,
+    DATA_BOUNDARY,
+    TCP_BLACKHOLE_DELAY,
+    CYNC_TCP_WHITELIST,
+    CYNC_MAX_TCP_CONN,
+    FACTORY_EFFECTS_BYTES,
+)
 from cync_lan.metadata.model_info import (
     DeviceTypeInfo,
     device_type_map,
@@ -1288,7 +1299,7 @@ class CyncTCPDevice:
                 await self.send_a3(queue_id)
             # device wants to connect before accepting commands
             elif pkt_type == 0xC3:
-                conn_time_str = ""
+                # conn_time_str = ""
                 ack_c3 = bytes(DEVICE_STRUCTS.responses.connection_ack)
                 logger.debug(f"{lp} CONNECTION REQUEST, replying...")
                 await self.write(ack_c3)
@@ -1620,7 +1631,7 @@ class CyncTCPDevice:
                         if packet_data[0] == DATA_BOUNDARY:
                             # checksum is 2nd last byte, last byte is 0x7e
                             checksum = packet_data[-2]
-                            inner_header = packet_data[1:6]
+                            # inner_header = packet_data[1:6]
                             ctrl_bytes = packet_data[5:7]
                             # removes checksum byte and 0x7e
                             inner_data = packet_data[6:-2]
@@ -1686,7 +1697,7 @@ class CyncTCPDevice:
                                         self.known_device_ids = []
                                         ids_reported = []
                                         loop_num = 0
-                                        mesh_info = {}
+                                        # mesh_info = {}
                                         _m = []
                                         _raw_m = []
                                         # structs = []
@@ -1752,11 +1763,11 @@ class CyncTCPDevice:
                                                         if not self.id:
                                                             self.id = dev_id
                                                             self.lp = f"{self.address}[{self.id}]:"
-                                                            cync_device = (
-                                                                g.ncync_server.devices[
-                                                                    dev_id
-                                                                ]
-                                                            )
+                                                            # cync_device = (
+                                                            #     g.ncync_server.devices[
+                                                            #         dev_id
+                                                            #     ]
+                                                            # )
                                                             logger.debug(
                                                                 f"{self.lp}parse:x{data[0]:02x}: Setting TCP"
                                                                 f" device Cync ID to: {self.id}"
@@ -2118,7 +2129,7 @@ class CyncTCPDevice:
             return False
         else:
             if chunk is None:
-                chunk = CYNC_CHUNK_SIZE
+                chunk = STREAM_CHUNK_SIZE
             async with self.read_lock:
                 if self.reader:
                     if not self.reader.at_eof():

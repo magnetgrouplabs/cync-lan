@@ -1,7 +1,9 @@
-FROM python:3.13-slim-bookworm AS final
+FROM python:3.14-slim-bookworm
 
-#ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+PYTHONUNBUFFERED=1 \
+PIP_BREAK_SYSTEM_PACKAGES=1 \
+DEBIAN_FRONTEND=noninteractive
 
 RUN set -x \
     && mkdir -p /root/cync-lan/certs \
@@ -11,40 +13,17 @@ RUN set -x \
 
 COPY ./ /tmp/cync-src
 
-RUN set -x \
-    && apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
-        openssl build-essential cmake \
-    && pip install --no-cache-dir -U pip \
-    && pip install --no-cache-dir /tmp/cync-src \
-    && DEBIAN_FRONTEND=noninteractive apt-get remove -yq build-essential cmake \
-    && DEBIAN_FRONTEND=noninteractive apt-get autoremove -yq \
-    && DEBIAN_FRONTEND=noninteractive apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -x && pip install --no-cache-dir /tmp/cync-src
+#COPY static/index.html /root/cync-lan/www/index.html
+COPY static/ /root/cync-lan/www/
 
 VOLUME /root/cync-lan/config
 EXPOSE 23779
 EXPOSE 23778
 
-ENV CYNC_MQTT_HOST="homeassistant.local" \
-    CYNC_MQTT_PORT=1883 \
-    CYNC_PORT=23779 \
-    CYNC_HOST="0.0.0.0" \
-    CYNC_CERT="/root/cync-lan/certs/cert.pem" \
-    CYNC_KEY="/root/cync-lan/certs/key.pem" \
-    CYNC_DEBUG=0 \
-    CYNC_RAW_DEBUG=0 \
-    CYNC_TOPIC="cync_lan" \
-    CYNC_HASS_TOPIC="homeassistant" \
-    CYNC_HASS_STATUS_TOPIC="status" \
-    CYNC_HASS_BIRTH_MSG="online" \
-    CYNC_HASS_WILL_MSG="offline" \
-    CYNC_MQTT_CONN_DELAY=10 \
-    CYNC_CMD_BROADCASTS=2 \
-    CYNC_MAX_TCP_CONN=8 \
-    CYNC_TCP_WHITELIST=""
-
 LABEL org.opencontainers.image.source="https://github.com/baudneo/cync-lan"
 LABEL org.opencontainers.image.description="Local async MQTT controller for Cync/C by GE Wi-Fi devices"
 
+#CMD 'python -c "from cync_lan.main import main; import asyncio; import uvloop; asyncio.set_event_loop_policy(uvloop.EventLoopPolicy()); main()" --enable-export'
+#CMD 'python -c "from cync_lan.main import main; main()"'
 CMD cync-lan

@@ -4,12 +4,24 @@ import logging
 import pickle
 import random
 import string
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
 import yaml
 
-from cync_lan.const import *
+from cync_lan.const import (
+    CYNC_OVERWRITE_CONFIG_FILE,
+    CYNC_CONFIG_DIR,
+    CYNC_CONFIG_FILE_PATH,
+    CYNC_CORP_ID,
+    CYNC_ACCOUNT_USERNAME,
+    CYNC_ACCOUNT_PASSWORD,
+    CYNC_ACCOUNT_LANGUAGE,
+    CYNC_API_BASE,
+    CYNC_CLOUD_AUTH_PATH,
+    CYNC_LOG_NAME,
+)
 from cync_lan.devices import CyncDevice
 from cync_lan.structs import GlobalObject, ComputedTokenData
 
@@ -312,8 +324,17 @@ class CyncCloudAPI:
                 mesh["product_id"], mesh["id"]
             )
         mesh_config = await self._mesh_to_config(mesh_networks)
+        base_cfg_path = Path(CYNC_CONFIG_FILE_PATH)
+        raw_cfg_file_out = base_cfg_path
+        if CYNC_OVERWRITE_CONFIG_FILE is False:
+            counter = 1
+            while raw_cfg_file_out.exists():
+                raw_cfg_file_out = base_cfg_path.with_name(
+                    f"{base_cfg_path.stem}_{counter}{base_cfg_path.suffix}"
+                )
+                counter += 1
         try:
-            with open(CYNC_CONFIG_FILE_PATH, "w") as f:
+            with raw_cfg_file_out.open("w") as f:
                 f.write(yaml.dump(mesh_config))
         except Exception as file_exc:
             logger.error(
@@ -328,18 +349,23 @@ class CyncCloudAPI:
         lp = f"{self.lp}:export config:"
         mesh_conf = {}
         # What we get from the Cync cloud API
-        raw_file_out = f"{PERSISTENT_BASE_DIR}/raw_mesh.cync"
+        base_file_path = Path(CYNC_CONFIG_DIR) / "raw_mesh.cync"
+        raw_file_out = base_file_path
+        if CYNC_OVERWRITE_CONFIG_FILE is False:
+            counter = 1
+            while raw_file_out.exists():
+                raw_file_out = base_file_path.with_name(
+                    f"{base_file_path.stem}_{counter}{base_file_path.suffix}"
+                )
+                counter += 1
         try:
             with open(raw_file_out, "w") as _f:
                 _f.write(yaml.dump(mesh_info))
         except Exception as file_exc:
-            logger.error(
-                f"{lp} Failed to write raw config from Cync account to file: '{raw_file_out}' -> {file_exc}"
-            )
+            logger.error(f"{lp} Failed to write config to '{raw_file_out}': {file_exc}")
         else:
-            logger.debug(
-                f"{lp} Dumped raw config from Cync account to file: {raw_file_out}"
-            )
+            logger.debug(f"{lp} Dumped config to: {raw_file_out}")
+
         for mesh_ in mesh_info:
             if "name" not in mesh_ or len(mesh_["name"]) < 1:
                 logger.debug(f"{lp} No name found for mesh, skipping...")

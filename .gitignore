@@ -1,4 +1,8 @@
 certs
-cync_data.json
+raw_meshcync_data.json
 cync_mesh.yaml
 /docs/debug.md
+./config
+uuid.txt
+./tailwindcss
+./docker-compose.yaml

@@ -1,0 +1,13 @@
+--2026-02-25 00:08:42--  https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css
+Loaded CA certificate '/etc/ssl/certs/ca-certificates.crt'
+Resolving cdnjs.cloudflare.com (cdnjs.cloudflare.com)... 104.17.24.14, 104.17.25.14, 2606:4700::6811:190e, ...
+Connecting to cdnjs.cloudflare.com (cdnjs.cloudflare.com)|104.17.24.14|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/css]
+Saving to: ‘animate.min.css’
+
+     0K .......... .......... .......... .......... .......... 11.7M
+    50K .......... ..........                                   991K=0.02s
+
+2026-02-25 00:08:42 (2.80 MB/s) - ‘animate.min.css’ saved [71750]
+

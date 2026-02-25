@@ -5,7 +5,7 @@ from typing import Dict, Optional, Union
 
 import uvloop
 
-from cync_lan.const import *
+from cync_lan.const import CYNC_SRV_PORT, CYNC_SRV_HOST, CYNC_RAW, CYNC_LOG_NAME
 from cync_lan.devices import CyncDevice, CyncTCPDevice
 from cync_lan.structs import GlobalObject, DeviceStatus
 
@@ -46,7 +46,7 @@ class nCyncServer:
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.host = CYNC_SRV_HOST
-        self.port = CYNC_PORT
+        self.port = CYNC_SRV_PORT
         g.reload_env()
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key

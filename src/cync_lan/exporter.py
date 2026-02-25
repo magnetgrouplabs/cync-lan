@@ -14,7 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from cync_lan.const import *
+from cync_lan.const import (
+    CYNC_EXPORT_HOST,
+    CYNC_EXPORT_PORT,
+    CYNC_CONFIG_FILE_PATH,
+    CYNC_STATIC_DIR,
+    CYNC_LOG_NAME,
+)
 from cync_lan.structs import GlobalObject
 
 g = GlobalObject()
@@ -90,47 +96,45 @@ async def restart():
     lp = "ExportServer:restart:"
     supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
     if not supervisor_token:
-        logger.warning(
-            f"{lp} SUPERVISOR_TOKEN environment variable not set. Are you in a Home Assistant add-on?"
-        )
-        return False, "Supervisor token not found."
+        logger.info(f"{lp} No SUPERVISOR_TOKEN found trying: cync_lan.stop()...")
+        g.cync_lan.stop()
+    else:
+        # The 'self' slug is a special value that refers to the current App.
+        # This is the recommended endpoint for self-restarts.
+        url = "http://supervisor/addons/self/restart"
 
-    # The 'self' slug is a special value that refers to the current add-on.
-    # This is the recommended endpoint for self-restarts.
-    url = "http://supervisor/addons/self/restart"
+        headers = {
+            "Authorization": f"Bearer {supervisor_token}",
+            "Content-Type": "application/json",
+        }
+        logger.info(f"{lp} Attempting to restart App via API call to {url}...")
 
-    headers = {
-        "Authorization": f"Bearer {supervisor_token}",
-        "Content-Type": "application/json",
-    }
-    logger.info(f"{lp} Attempting to restart add-on via API call to {url}...")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers) as response:
+                    if response.status == 200:
+                        logger.debug(
+                            "{lp} Successfully called the restart API. The App will now restart."
+                        )
+                        return True, "App is restarting."
+                    else:
+                        # Try to get more details from the response if it fails
+                        error_details = await response.text()
+                        logger.warning(
+                            f"{lp} Error: Failed to restart App. API returned status {response.status}"
+                        )
+                        logger.warning(f"{lp} Response: {error_details}")
+                        return (
+                            False,
+                            f"API returned status {response.status}: {error_details}",
+                        )
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers) as response:
-                if response.status == 200:
-                    logger.debug(
-                        "{lp} Successfully called the restart API. The add-on will now restart."
-                    )
-                    return True, "Add-on is restarting."
-                else:
-                    # Try to get more details from the response if it fails
-                    error_details = await response.text()
-                    logger.warning(
-                        f"{lp} Error: Failed to restart add-on. API returned status {response.status}"
-                    )
-                    logger.warning(f"{lp} Response: {error_details}")
-                    return (
-                        False,
-                        f"API returned status {response.status}: {error_details}",
-                    )
-
-    except aiohttp.ClientError as e:
-        logger.error(f"{lp} Error: An aiohttp client error occurred: {e}")
-        return False, f"AIOHTTP Client Error: {e}"
-    except Exception as e:
-        logger.error(f"{lp} An unexpected error occurred: {e}")
-        return False, f"An unexpected error occurred: {e}"
+        except aiohttp.ClientError as e:
+            logger.error(f"{lp} Error: An aiohttp client error occurred: {e}")
+            return False, f"AIOHTTP Client Error: {e}"
+        except Exception as e:
+            logger.error(f"{lp} An unexpected error occurred: {e}")
+            return False, f"An unexpected error occurred: {e}"
 
 
 @app.post("/api/export/otp/submit")
@@ -182,28 +186,26 @@ class ExportServer:
 
     def __init__(self):
         self.app = app
-        self.uvi_server = uvicorn.Server(
-            config=uvicorn.Config(
-                app,
-                host=CYNC_SRV_HOST,
-                port=INGRESS_PORT,
-                log_config={
-                    "version": 1,
-                    "disable_existing_loggers": False,
-                },
-                log_level="info",
-            )
+        self.uvi_config: uvicorn.Config = uvicorn.Config(
+            app,
+            host=CYNC_EXPORT_HOST,
+            port=CYNC_EXPORT_PORT,
+            log_config={
+                "version": 1,
+                "disable_existing_loggers": False,
+            },
+            log_level="info",
         )
+        self.uvi_server: uvicorn.Server = uvicorn.Server(config=self.uvi_config)
 
     async def start(self):
         """Start the FastAPI server."""
         lp = f"{self.lp}start:"
         logger.info(
-            f"{lp} Starting FastAPI export server on {CYNC_SRV_HOST}:{INGRESS_PORT}"
+            f"{lp} Starting FastAPI export server on {CYNC_EXPORT_HOST}:{CYNC_EXPORT_PORT}"
         )
         self.running = True
         # ["state_topic"] = f"{self.topic}/status/bridge/export_server/running"
-        # TODO: publish MQTT message indicating the export server status
         if g.mqtt_client:
             await g.mqtt_client.publish(
                 f"{g.env.mqtt_topic}/status/bridge/export_server/running", "ON".encode()
