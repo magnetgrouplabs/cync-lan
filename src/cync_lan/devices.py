@@ -75,11 +75,13 @@ class CyncDevice:
         fw_version: Optional[str] = None,
         home_id: Optional[int] = None,
         hvac: Optional[dict] = None,
+        sub_id: Optional[int] = None,
     ):
         self.control_bytes = bytes([0x00, 0x00])
         if cync_id is None:
             raise ValueError("ID must be provided to constructor")
         self.id = cync_id
+        self.sub_id = sub_id
         self.type = cync_type
         self.metadata = (
             device_type_map[self.type] if cync_type in device_type_map else None
