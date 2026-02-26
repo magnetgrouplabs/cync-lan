@@ -215,7 +215,7 @@ class CyncCloudAPI:
             self.token_cache = tkn
             return True
 
-    async def request_devices(self):
+    async def request_device_data(self):
         """Get a list of devices for a particular user."""
         lp = f"{self.lp}:get_devices:"
         await self._check_session()
@@ -255,7 +255,7 @@ class CyncCloudAPI:
                 # return self.get_devices(*self.authenticate_2fa())
         return ret
 
-    async def get_properties(self, product_id: str, device_id: str):
+    async def get_cync_home_properties(self, product_id: str, device_id: str):
         """Get properties for a single device. Properties contain a device list (bulbsArray), groups (groupsArray), and saved light effects (lightShows)."""
         lp = f"{self.lp}:get_properties:"
         await self._check_session()
@@ -318,12 +318,15 @@ class CyncCloudAPI:
 
     async def export_config_file(self) -> bool:
         """Get Cync devices from the cloud"""
-        mesh_networks = await self.request_devices()
-        for mesh in mesh_networks:
-            mesh["properties"] = await self.get_properties(
-                mesh["product_id"], mesh["id"]
-            )
-        mesh_config = await self._mesh_to_config(mesh_networks)
+        exported_data = await self.request_device_data()
+        # moved into _parse_raw_export to only pull properties for valid homes that have a name
+        # prevents unnecessary API calls for empty homes that don't have any devices or properties
+        # for exported_home in exported_data:
+        #     exported_home["properties"] = await self.get_cync_home_properties(
+        #         exported_home["product_id"], exported_home["id"]
+        #     )
+        cync_lan_cfg = await self._parse_raw_export(exported_data)
+        # write config to file in YAML format
         base_cfg_path = Path(CYNC_CONFIG_FILE_PATH)
         raw_cfg_file_out = base_cfg_path
         if CYNC_OVERWRITE_CONFIG_FILE is False:
@@ -335,60 +338,50 @@ class CyncCloudAPI:
                 counter += 1
         try:
             with raw_cfg_file_out.open("w") as f:
-                f.write(yaml.dump(mesh_config))
+                f.write(yaml.dump(cync_lan_cfg))
         except Exception as file_exc:
             logger.error(
-                f"{self.lp} Failed to write mesh config to file: {CYNC_CONFIG_FILE_PATH} -> {file_exc}"
+                f"{self.lp} Failed to write cync-lan config to file: {CYNC_CONFIG_FILE_PATH} -> {file_exc}"
             )
             return False
         else:
             return True
 
-    async def _mesh_to_config(self, mesh_info):
+    async def _parse_raw_export(self, exported_home_data: dict):
         """Take exported cloud data and format it into a working config dict to be dumped in YAML format."""
-        lp = f"{self.lp}:export config:"
-        mesh_conf = {}
+        lp = f"{self.lp}:parse export:"
+        new_cfg = {}
         # What we get from the Cync cloud API
         base_file_path = Path(CYNC_CONFIG_DIR) / "raw_mesh.cync"
         raw_file_out = base_file_path
-        if CYNC_OVERWRITE_CONFIG_FILE is False:
-            counter = 1
-            while raw_file_out.exists():
-                raw_file_out = base_file_path.with_name(
-                    f"{base_file_path.stem}_{counter}{base_file_path.suffix}"
+        # strip out empty configs (IDK why, I have a bunch with access_code 77777 that are empty)
+        for raw_home in exported_home_data:
+            if "name" not in raw_home or len(raw_home["name"]) < 1:
+                logger.debug(f"{lp} No name found for Cync home (safely ignore), skipping...")
+                # I see several empty 'home' configs in the returned data, they don't have a name,
+                # any properties/devices, so we can safely ignore them
+                continue
+            if "properties" not in raw_home:
+                # only pull device list for valid Cync homes
+                raw_home["properties"] = await self.get_cync_home_properties(
+                    raw_home["product_id"], raw_home["id"]
                 )
-                counter += 1
-        try:
-            with open(raw_file_out, "w") as _f:
-                _f.write(yaml.dump(mesh_info))
-        except Exception as file_exc:
-            logger.error(f"{lp} Failed to write config to '{raw_file_out}': {file_exc}")
-        else:
-            logger.debug(f"{lp} Dumped config to: {raw_file_out}")
-
-        for mesh_ in mesh_info:
-            if "name" not in mesh_ or len(mesh_["name"]) < 1:
-                logger.debug(f"{lp} No name found for mesh, skipping...")
+            if "bulbsArray" not in raw_home["properties"]:
+                # Haven't encountered this scenario yet
+                logger.debug(f"{lp} No 'bulbsArray' in Cync home: '{raw_home["name"]}' properties (please open an issue), skipping...")
                 continue
-            if "properties" not in mesh_:
-                logger.debug(f"{lp} No properties found for mesh, skipping...")
-                continue
-            elif "bulbsArray" not in mesh_["properties"]:
-                logger.debug(f"{lp} No 'bulbsArray' in properties, skipping...")
-                continue
-
-            new_mesh = {
-                kv: mesh_[kv] for kv in ("access_key", "id", "mac") if kv in mesh_
-            }
-            mesh_conf[mesh_["name"]] = new_mesh
-
             logger.debug(
-                f"{lp} 'properties' and 'bulbsArray' found in exported config, processing..."
+                f"{lp} 'properties' and 'bulbsArray' found in exported config, proceeding..."
             )
-            new_mesh["devices"] = {}
-            for cfg_bulb in mesh_["properties"]["bulbsArray"]:
+            new_home = {
+                kv: raw_home[kv] for kv in ("access_key", "id", "mac") if kv in raw_home
+            }
+            new_cfg[raw_home["name"]] = new_home
+            new_home["devices"] = {}
+            wtf_cync = {}
+            for raw_device in raw_home["properties"]["bulbsArray"]:
                 if any(
-                    checkattr not in cfg_bulb
+                    checkattr not in raw_device
                     for checkattr in (
                         "deviceID",
                         "displayName",
@@ -399,57 +392,100 @@ class CyncCloudAPI:
                     )
                 ):
                     logger.warning(
-                        f"{lp} Missing required attribute in Cync bulb, skipping: {cfg_bulb}"
+                        f"{lp} Missing required attribute (ID, Name, Type, macs, Version) in Cync device, skipping: {raw_device}"
                     )
                     continue
-                new_dev_dict = {}
-                # last 3 digits of deviceID
-                __id = int(str(cfg_bulb["deviceID"])[-3:])
-                wifi_mac = str(cfg_bulb["wifiMac"])
-                _mac = str(cfg_bulb["mac"])
-                name = str(cfg_bulb["displayName"])
-                _type = int(cfg_bulb["deviceType"])
-                _fw_ver = str(cfg_bulb["firmwareVersion"])
+                new_device = {}
+                wifi_mac = str(raw_device["wifiMac"])
+                bt_mac = str(raw_device["mac"])
+                dev_name = str(raw_device["displayName"])
+                dev_type = int(raw_device["deviceType"])
+                fw_ver = str(raw_device["firmwareVersion"])
+                # switchID ? maybe links them in their logic?
+                raw_id = raw_device["deviceID"]
+                home_id = raw_id[:9]
+                raw_dev = raw_id.split(home_id)[1]
+                dev_id = 0
+                sub_id = 0
+                parent = None
+                if len(raw_dev) > 3:
+                    # firmwareVersion = Unknown is also an identifier for sub-devices
+                    # sub-device wifiMac will always be 01:02:03:04:05:06 even if parent has WiFi, BT MACs match
+                    sub_id = int(raw_dev[3:])
+                    dev_id = int(raw_dev[-3:])
+                    if dev_id in new_home["devices"]:
+                        parent = new_home["devices"][dev_id]
+                        if "children" not in parent:
+                            # first sub-device
+                            parent["children"] = {}
+                        else:
+                            # children already populated
+                            pass
+                        # 'children': { 001: 'fireplace lights', 002: 'fence lights' }
+                        if sub_id in parent["children"]:
+                            logger.error(f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled...")
+                        else:
+                            logger.info(
+                                f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent ({dev_id}) named: {parent['name']}"
+                            )
+                            parent["children"][sub_id] = dev_name
+                            continue
+                    else:
+                        logger.warning(f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, skipping sub-device. Please open an issue with debug logs enabled...")
+                        # fixme: staging for sub-device before known parent? parse them all then go through and remove sub devices?
+                        continue
+
                 # data from: https://github.com/baudneo/cync-lan/issues/8
                 # { "hvacSystem": { "changeoverMode": 0, "auxHeatStages": 1, "auxFurnaceType": 1, "stages": 1, "furnaceType": 1, "type": 2, "powerLines": 1 },
                 # "thermostatSensors": [ { "pin": "025572", "name": "Living Room", "type": "savant" }, { "pin": "044604", "name": "Bedroom Sensor", "type": "savant" }, { "pin": "022724", "name": "Thermostat sensor 3", "type": "savant" } ] } ]
+                # todo: thermostat device logic whenever someone gets me debug data
                 hvac_cfg = None
-                if "hvacSystem" in cfg_bulb:
-                    hvac_cfg = cfg_bulb["hvacSystem"]
-                    if "thermostatSensors" in cfg_bulb:
-                        hvac_cfg["thermostatSensors"] = cfg_bulb["thermostatSensors"]
+                if "hvacSystem" in raw_device:
+                    hvac_cfg = raw_device["hvacSystem"]
+                    if "thermostatSensors" in raw_device:
+                        hvac_cfg["thermostatSensors"] = raw_device["thermostatSensors"]
                     logger.debug(
-                        f"{lp} Found HVAC device '{name}' (ID: {__id}): {hvac_cfg}"
+                        f"{lp} Found HVAC device '{dev_name}' (ID: {dev_id}): {hvac_cfg}"
                     )
-                    new_dev_dict["hvac"] = hvac_cfg
+                    new_device["hvac"] = hvac_cfg
+                # sub-devices dealt with above, we only want to create CyncDevice objects for parent devices, the sub-devices will be added to the parent struct as children but won't be their own CyncDevice objects since they don't have all the necessary data (like mac address, etc) and aren't directly controlled in the same way as the parent device
 
+                # this cycn device is only instantiated to pull a couple of properties from: is_plug, supports_*
                 cync_device = CyncDevice(
-                    name=name,
-                    cync_id=__id,
-                    cync_type=_type,
-                    mac=_mac,
+                    name=dev_name,
+                    cync_id=dev_id,
+                    cync_type=dev_type,
+                    mac=bt_mac,
                     wifi_mac=wifi_mac,
-                    fw_version=_fw_ver,
+                    fw_version=fw_ver,
                     hvac=hvac_cfg,
                 )
-                for attr_set in (
-                    "name",
-                    "mac",
-                    "wifi_mac",
-                ):
-                    value = getattr(cync_device, attr_set)
-                    if value:
-                        new_dev_dict[attr_set] = value
-                    else:
-                        logger.warning(f"{lp} Attribute not found for bulb: {attr_set}")
-                new_dev_dict["type"] = _type
-                new_dev_dict["is_plug"] = cync_device.is_plug
-                new_dev_dict["supports_temperature"] = cync_device.supports_temperature
-                new_dev_dict["supports_rgb"] = cync_device.supports_rgb
-                new_dev_dict["fw"] = _fw_ver
+                new_device["type"] = dev_type
+                new_device["is_plug"] = cync_device.is_plug
+                new_device["supports_temperature"] = cync_device.supports_temperature
+                new_device["supports_rgb"] = cync_device.supports_rgb
+                new_device["fw"] = fw_ver
+                del cync_device
+                # add device to 'home' config
+                new_home["devices"][dev_id] = new_device
 
-                new_mesh["devices"][__id] = new_dev_dict
+        # write raw exported config to file for debugging
+        # todo: add logic to only output this when unknown devices are in the output or any anomalies encountered
+        if CYNC_OVERWRITE_CONFIG_FILE is False:
+            # basic numbered suffix logic to prevent overwriting existing files
+            counter = 1
+            while raw_file_out.exists():
+                raw_file_out = base_file_path.with_name(
+                    f"{base_file_path.stem}_{counter}{base_file_path.suffix}"
+                )
+                counter += 1
+        try:
+            with open(raw_file_out, "w") as _f:
+                _f.write(yaml.dump(exported_home_data))
+        except Exception as file_exc:
+            logger.error(f"{lp} Failed to write RAW config to '{raw_file_out}': {file_exc}")
+        else:
+            logger.debug(f"{lp} Dumped RAW cloud export data to: {raw_file_out}")
 
-        config_dict = {"account data": mesh_conf}
-
+        config_dict = {"exported_homes": new_cfg}
         return config_dict
