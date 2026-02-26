@@ -19,14 +19,18 @@ services:
 #    env_file: ./env
     environment:
       TZ: "America/Chicago"
+      # to export devices from the cloud account, the export web app needs to be enabled and the cync username/password configured.
+      # if you only want to use the LAN bridge functionality and don't need to export devices from the cloud account,
+      # you can disable the exporter with this variable. If the exporter is enabled, you must configure the account username and password variables as well.
+      CYNC_ENABLE_EXPORTER: no
       # Credentials are required for the export web app to access your Cync account and retrieve device information,
       # but they are not required for the main LAN bridge functionality.
       CYNC_ACCOUNT_USERNAME: "cync-account-email@gmail.com"
       CYNC_ACCOUNT_PASSWORD: "cync-account-password"
-      # Interface to listen for cync devices on, default is all interfaces but can be set to a specific IP if needed.
+      # Interface to listen for cync devices on, default is 0.0.0.0 but can be set to a specific IP if needed.
 #      CYNC_SRV_HOST: "192.168.45.67"
-      # Interface for the export server, default is CYNC_SRV_HOST value but can be set to a specific IP if needed.
-#      CYNC_EXPORT_HOST: "127.0.0.1"
+      # Interface for the export server, default is 127.0.0.1, but can be set to a specific IP if needed.
+#      CYNC_EXPORT_HOST: "192.168.97.65"
 
 #      CYNC_MQTT_HOST: "homeassistant.local"
 #      CYNC_MQTT_PORT: 1833
@@ -34,8 +38,8 @@ services:
 #      CYNC_MQTT_PASS: "password"
 #      CYNC_TOPIC: "cync_lan"
     # Debug logging, regular and raw binary
-#      CYNC_DEBUG: 1
-#      CYNC_RAW_DEBUG: 1
+#      CYNC_DEBUG: yes
+#      CYNC_RAW_DEBUG: yes
     networks:
       - cync-lan
 
