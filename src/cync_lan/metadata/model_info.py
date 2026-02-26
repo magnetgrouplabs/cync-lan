@@ -346,8 +346,9 @@ device_type_map = {
     ),
     67: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
-        model_name="Indoor Plug (Unknown)",
-        protocol=DeviceProtocol(TCP=True),
+        model_name="Outdoor Plug - Dual Outlet",
+        model_id="CPLGOD2BLG1",
+        protocol=DeviceProtocol(TCP=True, MATTER=True),
         capabilities=SwitchCapabilities(plug=True),
     ),
     68: DeviceTypeInfo(
