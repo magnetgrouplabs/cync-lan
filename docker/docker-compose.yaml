@@ -13,7 +13,7 @@ services:
       # local export server for cync-lan: http://localhost:23778 then click the 'start_export' button
       - "23778:23778"
     volumes:
-      # Create a ./config dir and place the exported config file in this directory
+      # Create a ./config dir and place an existing config file in this directory
       # if you change CYNC_BASE_DIR or CYNC_CONFIG_DIR then update the right side of the volume mapping to match the new path
       - ./config:/root/cync-lan/config
 #    env_file: ./env
