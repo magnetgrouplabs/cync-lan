@@ -171,7 +171,14 @@ async def parse_config(cfg_file: Path):
 
     devices = {}
     # parse homes and devices
-    for cync_home_name, home_cfg in raw_config["account data"].items():
+    main_key = "account data"
+    if main_key not in raw_config:
+        if "exported_homes" in raw_config:
+            logger.warning(
+                f"{lp} 'account data' key not found in config file, but 'exported_homes' key exists. This may be an older export format. Attempting to parse devices from 'exported_homes'..."
+            )
+            main_key = "exported_homes"
+    for cync_home_name, home_cfg in raw_config[main_key].items():
         home_id = home_cfg["id"]
         if "devices" not in home_cfg:
             logger.warning(
@@ -198,6 +205,7 @@ async def parse_config(cfg_file: Path):
                         f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                     )
                     continue
+            children = None
             fw_version = (
                 cync_device["fw"] if "fw" in cync_device and cync_device["fw"] else None
             )
@@ -208,7 +216,6 @@ async def parse_config(cfg_file: Path):
                 if "type" in cync_device and cync_device["type"]
                 else None
             )
-            # 'mac': 26616350814, 'wifi_mac': 26616350815
             if "mac" in cync_device:
                 btmac = cync_device["mac"]
                 if btmac:
@@ -224,6 +231,9 @@ async def parse_config(cfg_file: Path):
                         logger.debug(
                             f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> {wmac}, please quote the mac address to force it to a string in the config file"
                         )
+            if "children" in cync_device and cync_device["children"]:
+                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has children...")
+                children = cync_device["children"]
 
             new_device = CyncDevice(
                 name=device_name,
@@ -233,9 +243,9 @@ async def parse_config(cfg_file: Path):
                 mac=btmac,
                 wifi_mac=wmac,
                 cync_type=dev_type,
+                children=children
             )
             devices[cync_id] = new_device
-            # logger.debug(f"{lp} Created device (hass_id: {new_device.hass_id}) (home_id: {new_device.home_id}) (device_id: {new_device.id}): {new_device}")
 
     return devices
 
