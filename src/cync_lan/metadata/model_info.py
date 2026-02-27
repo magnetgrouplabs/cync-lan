@@ -395,7 +395,7 @@ device_type_map = {
         capabilities=LightCapabilities(tunable_white=True),
     ),
     107: DeviceTypeInfo(
-        type=DeviceClassification.SWITCH,
+        type=DeviceClassification.LIGHT,
         model_name="Full Color Reveal HD+ Bulb",
         model_info="CLEDA199CDRV",
         protocol=DeviceProtocol(TCP=True),
