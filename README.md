@@ -124,7 +124,7 @@ breakdown. Please see the
 | `CYNC_DEVICE_KEY`            | Path to key file                                                                                                            | `certs/server.key`    | str  |
 | `CYNC_SRV_HOST`              | Interface to listen on                                                                                                      | `0.0.0.0`             | str  |
 | `CYNC_PORT`                  | Port to listen for Cync devices (shouldn't need to change)                                                                  | `23779`               | int  |
-| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | `127.0.0.1`           | str  |
+| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | CYNC_SRV_HOST value   | str  |
 | `CYNC_EXPORT_PORT`           | Port for export web app                                                                                                     | `23778`               | int  |
 | `CYNC_TOPIC`                 | MQTT topic                                                                                                                  | `cync_lan`            | str  |
 | `CYNC_HASS_TOPIC`            | Home Assistant topic                                                                                                        | `homeassistant`       | str  |
