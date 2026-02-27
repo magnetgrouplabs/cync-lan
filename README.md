@@ -119,12 +119,13 @@ breakdown. Please see the
 | `CYNC_MQTT_CONN_DELAY`       | Delay between MQTT re-connections (seconds)                                                                                 | `10`                  | int  |
 | `CYNC_DEBUG`                 | Enable debug logging                                                                                                        | `no`                  | int  |
 | `CYNC_RAW_DEBUG`             | Enable raw binary message debug logging                                                                                     | `no`                  | int  |
+| `CYNC_EXPORT_SOURCE`         | If set to a `raw_mesh.cync` file, it will read that instead of querying the cloud                                           |                       | str  |
 | `CYNC_DEVICE_CERT`           | Path to cert file                                                                                                           | `certs/server.pem`    | str  |
 | `CYNC_DEVICE_KEY`            | Path to key file                                                                                                            | `certs/server.key`    | str  |
 | `CYNC_SRV_HOST`              | Interface to listen on                                                                                                      | `0.0.0.0`             | str  |
-| `CYNC_PORT`                  | Port to listen on for Cync devices (shouldn't need to change)                                                               | `23779`               | int  |
-| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | `CYNC_SRV_HOST`       | str  |
-| `CYNC_EXPORT_PORT`           | PortExport web app port to listen on                                                                                        | `23778`               | int  |
+| `CYNC_PORT`                  | Port to listen for Cync devices (shouldn't need to change)                                                                  | `23779`               | int  |
+| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | `127.0.0.1`           | str  |
+| `CYNC_EXPORT_PORT`           | Port for export web app                                                                                                     | `23778`               | int  |
 | `CYNC_TOPIC`                 | MQTT topic                                                                                                                  | `cync_lan`            | str  |
 | `CYNC_HASS_TOPIC`            | Home Assistant topic                                                                                                        | `homeassistant`       | str  |
 | `CYNC_HASS_STATUS_TOPIC`     | HASS status topic for birth / will                                                                                          | `status`              | str  |

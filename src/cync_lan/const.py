@@ -89,6 +89,7 @@ DEVICE_LWT_MSG: bytes = b"offline"
 
 CYNC_SRV_HOST = os.environ.get("CYNC_SRV_HOST", "0.0.0.0")
 CYNC_EXPORT_HOST = os.environ.get("CYNC_EXPORT_HOST", "127.0.0.1")
+CYNC_EXPORT_SOURCE = os.environ.get("CYNC_EXPORT_SOURCE")
 
 CYNC_ACCOUNT_LANGUAGE: str = os.environ.get("CYNC_ACCOUNT_LANGUAGE", "en-us").casefold()
 CYNC_ACCOUNT_USERNAME: str = os.environ.get("CYNC_ACCOUNT_USERNAME", None)

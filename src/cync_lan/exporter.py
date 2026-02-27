@@ -20,6 +20,7 @@ from cync_lan.const import (
     CYNC_CONFIG_FILE_PATH,
     CYNC_STATIC_DIR,
     CYNC_LOG_NAME,
+    CYNC_EXPORT_SOURCE,
 )
 from cync_lan.structs import GlobalObject
 
@@ -57,22 +58,25 @@ async def get_index():
 @app.get("/api/export/start")
 async def start_export():
     ret_msg = "Export started successfully"
-    try:
-        succ = await g.cloud_api.check_token()
-        if succ is False:
-            req_succ = await g.cloud_api.request_otp()
-            if req_succ is True:
-                ret_msg = "OTP requested, check your email for the OTP code to complete the export."
-                return {"success": False, "message": ret_msg}
-            else:
-                ret_msg = "Failed to request OTP. Please check your credentials or network connection."
-                return {"success": False, "message": ret_msg}
-        else:
-            await g.cloud_api.export_config_file()
-            return {"success": True, "message": ret_msg}
-    except Exception as e:
-        logger.exception(f"Export start failed: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+    if CYNC_EXPORT_SOURCE is None:
+        try:
+            succ = await g.cloud_api.check_token()
+            if succ is False:
+                req_succ = await g.cloud_api.request_otp()
+                if req_succ is True:
+                    ret_msg = "OTP requested, check your email for the OTP code to complete the export."
+                    return {"success": False, "message": ret_msg}
+                else:
+                    ret_msg = "Failed to request OTP. Please check your credentials or network connection."
+                    return {"success": False, "message": ret_msg}
+        except Exception as e:
+            logger.exception(f"Export start failed: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+    else:
+        ret_msg = "CYNC_EXPORT_SOUCE configured, reading from a file instead of the cloud API."
+
+    await g.cloud_api.export_config_file()
+    return {"success": True, "message": ret_msg}
 
 
 @app.get("/api/export/otp/request")
@@ -114,7 +118,7 @@ async def restart():
                 async with session.post(url, headers=headers) as response:
                     if response.status == 200:
                         logger.debug(
-                            "{lp} Successfully called the restart API. The App will now restart."
+                            f"{lp} Successfully called the restart API. The App will now restart."
                         )
                         return True, "App is restarting."
                     else:

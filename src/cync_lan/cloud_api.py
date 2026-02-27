@@ -21,6 +21,7 @@ from cync_lan.const import (
     CYNC_API_BASE,
     CYNC_CLOUD_AUTH_PATH,
     CYNC_LOG_NAME,
+    CYNC_EXPORT_SOURCE,
 )
 from cync_lan.devices import CyncDevice
 from cync_lan.structs import GlobalObject, ComputedTokenData
@@ -216,7 +217,7 @@ class CyncCloudAPI:
             return True
 
     async def request_device_data(self):
-        """Get a list of devices for a particular user."""
+        """Get a list of Cync homes that have their own devices for a particular account."""
         lp = f"{self.lp}:get_devices:"
         await self._check_session()
         user_id = self.token_cache.user_id
@@ -256,7 +257,7 @@ class CyncCloudAPI:
         return ret
 
     async def get_cync_home_properties(self, product_id: str, device_id: str):
-        """Get properties for a single device. Properties contain a device list (bulbsArray), groups (groupsArray), and saved light effects (lightShows)."""
+        """Get properties for a Cync home. Properties contain a device list (bulbsArray), groups (groupsArray), and saved light effects (lightShows)."""
         lp = f"{self.lp}:get_properties:"
         await self._check_session()
         access_token = self.token_cache.access_token
@@ -318,7 +319,28 @@ class CyncCloudAPI:
 
     async def export_config_file(self) -> bool:
         """Get Cync devices from the cloud"""
-        exported_data = await self.request_device_data()
+        if CYNC_EXPORT_SOURCE is not None:
+            logger.warning(f"{self.lp} The source for export has been configured as a file: {CYNC_EXPORT_SOURCE} "
+                           f"skipping cloud export and using the provided file instead...")
+            src_file = Path(CYNC_EXPORT_SOURCE)
+            if not src_file.exists():
+                logger.error(f"{self.lp} The provided export source file does not exist: {CYNC_EXPORT_SOURCE}")
+                return False
+            elif not src_file.is_file():
+                logger.error(f"{self.lp} The provided export source path is not a file: {CYNC_EXPORT_SOURCE}")
+                return False
+            else:
+                try:
+                    with src_file.open("r") as f:
+                        exported_data = yaml.safe_load(f)
+                except Exception as file_exc:
+                    logger.error(f"{self.lp} Failed to read export source file: {CYNC_EXPORT_SOURCE} -> {file_exc}")
+                    return False
+                else:
+                    logger.debug(f"{self.lp} Successfully read export source file: {CYNC_EXPORT_SOURCE}")
+        else:
+            # use the cloud
+            exported_data = await self.request_device_data()
         # moved into _parse_raw_export to only pull properties for valid homes that have a name
         # prevents unnecessary API calls for empty homes that don't have any devices or properties
         # for exported_home in exported_data:
@@ -508,25 +530,25 @@ class CyncCloudAPI:
                 # add device to 'home' config
                 new_home["devices"][dev_id] = new_device
 
-        # write raw exported config to file for debugging
-        # todo: add logic to only output this when unknown devices are in the output or any anomalies encountered
-        if CYNC_OVERWRITE_CONFIG_FILE is False:
-            # basic numbered suffix logic to prevent overwriting existing files
-            counter = 1
-            while raw_file_out.exists():
-                raw_file_out = base_file_path.with_name(
-                    f"{base_file_path.stem}_{counter}{base_file_path.suffix}"
+        # write raw exported config to file for debugging, only if export source is not configured as a file
+        if CYNC_EXPORT_SOURCE is None:
+            if CYNC_OVERWRITE_CONFIG_FILE is False:
+                # basic numbered suffix logic to prevent overwriting existing files
+                counter = 1
+                while raw_file_out.exists():
+                    raw_file_out = base_file_path.with_name(
+                        f"{base_file_path.stem}_{counter}{base_file_path.suffix}"
+                    )
+                    counter += 1
+            try:
+                with open(raw_file_out, "w") as _f:
+                    _f.write(yaml.dump(exported_home_data))
+            except Exception as file_exc:
+                logger.error(
+                    f"{lp} Failed to write RAW config to '{raw_file_out}': {file_exc}"
                 )
-                counter += 1
-        try:
-            with open(raw_file_out, "w") as _f:
-                _f.write(yaml.dump(exported_home_data))
-        except Exception as file_exc:
-            logger.error(
-                f"{lp} Failed to write RAW config to '{raw_file_out}': {file_exc}"
-            )
-        else:
-            logger.debug(f"{lp} Dumped RAW cloud export data to: {raw_file_out}")
+            else:
+                logger.debug(f"{lp} Dumped RAW cloud export data to: {raw_file_out}")
 
         config_dict = {"exported_homes": new_cfg}
         return config_dict
