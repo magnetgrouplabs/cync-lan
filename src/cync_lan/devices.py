@@ -3,7 +3,7 @@ import datetime
 import logging
 import random
 import time
-from typing import Optional, Union, List, Coroutine
+from typing import Optional, Union, List, Coroutine, Dict
 from functools import partial
 
 from cync_lan.const import (
