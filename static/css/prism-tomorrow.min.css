@@ -1,12 +1,1 @@
---2026-02-25 00:11:44--  https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css
-Loaded CA certificate '/etc/ssl/certs/ca-certificates.crt'
-Resolving cdnjs.cloudflare.com (cdnjs.cloudflare.com)... 104.17.24.14, 104.17.25.14, 2606:4700::6811:190e, ...
-Connecting to cdnjs.cloudflare.com (cdnjs.cloudflare.com)|104.17.24.14|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: unspecified [text/css]
-Saving to: ‘prism-tomorrow.min.css’
-
-     0K .                                                      13.4M=0s
-
-2026-02-25 00:11:44 (13.4 MB/s) - ‘prism-tomorrow.min.css’ saved [1313]
-
+code[class*=language-],pre[class*=language-]{color:#ccc;background:0 0;font-family:Consolas,Monaco,'Andale Mono','Ubuntu Mono',monospace;font-size:1em;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none}pre[class*=language-]{padding:1em;margin:.5em 0;overflow:auto}:not(pre)>code[class*=language-],pre[class*=language-]{background:#2d2d2d}:not(pre)>code[class*=language-]{padding:.1em;border-radius:.3em;white-space:normal}.token.block-comment,.token.cdata,.token.comment,.token.doctype,.token.prolog{color:#999}.token.punctuation{color:#ccc}.token.attr-name,.token.deleted,.token.namespace,.token.tag{color:#e2777a}.token.function-name{color:#6196cc}.token.boolean,.token.function,.token.number{color:#f08d49}.token.class-name,.token.constant,.token.property,.token.symbol{color:#f8c555}.token.atrule,.token.builtin,.token.important,.token.keyword,.token.selector{color:#cc99cd}.token.attr-value,.token.char,.token.regex,.token.string,.token.variable{color:#7ec699}.token.entity,.token.operator,.token.url{color:#67cdcc}.token.bold,.token.important{font-weight:700}.token.italic{font-style:italic}.token.entity{cursor:help}.token.inserted{color:green}
