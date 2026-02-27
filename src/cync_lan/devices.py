@@ -145,6 +145,8 @@ class CyncDevice:
                     f"{self.lp} in CyncDevice.version().setter, the firmwareVersion "
                     f"extracted from the cloud is an empty string!"
                 )
+            elif value.casefold() == "unknown":
+                logger.debug(f"{self.lp} This is a sub-device")
             else:
                 try:
                     _x = int(value.replace(".", "").replace("\0", "").strip())
