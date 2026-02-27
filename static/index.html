@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CyncLAN - Device Export</title>
-  <link href="/static/css/main.min.css" rel="stylesheet">
-  <link href="/static/css/animate.min.css" rel="stylesheet">
-  <link href="/static/css/prism-tomorrow.min.css" rel="stylesheet">
+  <link href="./static/css/main.min.css" rel="stylesheet">
+  <link href="./static/css/animate.min.css" rel="stylesheet">
+  <link href="./static/css/prism-tomorrow.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center">
   <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-2xl w-full max-w-2xl animate__animated animate__fadeIn">
@@ -59,8 +59,8 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/js/prism.min.js"></script>
-  <script src="/static/js/prism-yaml.min.js"></script>
+  <script src="./static/js/prism.min.js"></script>
+  <script src="./static/js/prism-yaml.min.js"></script>
   <script>
     const BASE_PATH = window.location.pathname.replace(/\/[^\/]*$/, '');
     const toast = document.getElementById('toast');
@@ -95,7 +95,7 @@
       spinner.classList.remove('hidden');
 
       try {
-        const response = await fetch(`${BASE_PATH}/api/export/start`);
+        const response = await fetch(`./api/export/start`);
         const result = await response.json();
         if (response.ok && result.success) {
           await fetchAndShowConfig();
@@ -118,7 +118,7 @@
       if (!/^[0-9]{4,10}$/.test(otp)) return showError("OTP must be 4–10 digits");
 
       try {
-        const response = await fetch(`${BASE_PATH}/api/export/otp/submit`, {
+        const response = await fetch(`./api/export/otp/submit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ otp: parseInt(otp, 10) })
@@ -138,7 +138,7 @@
 
     async function restartServer() {
       try {
-        const response = await fetch(`${BASE_PATH}/api/restart`, { method: 'POST' });
+        const response = await fetch(`./api/restart`, { method: 'POST' });
         if (response.ok) showToast('Server restart requested.');
       } catch (e) {
         showError('Restart error: ' + e.message);
@@ -147,12 +147,12 @@
 
     async function fetchAndShowConfig() {
       try {
-        const response = await fetch(`${BASE_PATH}/api/export/download`);
+        const response = await fetch(`./api/export/download`);
         const text = await response.text();
         const code = document.querySelector('#yamlPreview code');
         code.textContent = text;
         Prism.highlightElement(code);
-        document.getElementById('downloadLink').href = `${BASE_PATH}/api/export/download`;
+        document.getElementById('downloadLink').href = `./api/export/download`;
         document.getElementById('successSection').classList.remove('hidden');
       } catch (e) {
         showError("Failed to load config: " + e.message);
