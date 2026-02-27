@@ -357,7 +357,9 @@ class CyncCloudAPI:
         # strip out empty configs (IDK why, I have a bunch with access_code 77777 that are empty)
         for raw_home in exported_home_data:
             if "name" not in raw_home or len(raw_home["name"]) < 1:
-                logger.debug(f"{lp} No name found for Cync home (safely ignore), skipping...")
+                logger.debug(
+                    f"{lp} No name found for Cync home (safely ignore), skipping..."
+                )
                 # I see several empty 'home' configs in the returned data, they don't have a name,
                 # any properties/devices, so we can safely ignore them
                 continue
@@ -368,7 +370,9 @@ class CyncCloudAPI:
                 )
             if "bulbsArray" not in raw_home["properties"]:
                 # Haven't encountered this scenario yet
-                logger.debug(f"{lp} No 'bulbsArray' in Cync home: '{raw_home["name"]}' properties (please open an issue), skipping...")
+                logger.debug(
+                    f"{lp} No 'bulbsArray' in Cync home: '{raw_home['name']}' properties (safely ignore), skipping..."
+                )
                 continue
             logger.debug(
                 f"{lp} 'properties' and 'bulbsArray' found in exported config, proceeding..."
@@ -378,7 +382,7 @@ class CyncCloudAPI:
             }
             new_cfg[raw_home["name"]] = new_home
             new_home["devices"] = {}
-            wtf_cync = {}
+            sub_dev_reg = {}
             for raw_device in raw_home["properties"]["bulbsArray"]:
                 if any(
                     checkattr not in raw_device
@@ -392,7 +396,7 @@ class CyncCloudAPI:
                     )
                 ):
                     logger.warning(
-                        f"{lp} Missing required attribute (ID, Name, Type, macs, Version) in Cync device, skipping: {raw_device}"
+                        f"{lp} Missing required attribute (ID, Name, Type, MACs, Version) in Cync device, skipping: {raw_device}"
                     )
                     continue
                 new_device = {}
@@ -402,7 +406,10 @@ class CyncCloudAPI:
                 dev_type = int(raw_device["deviceType"])
                 fw_ver = str(raw_device["firmwareVersion"])
                 # switchID ? maybe links them in their logic?
-                raw_id = raw_device["deviceID"]
+                # YAML will cast a string to an int if it is not quoted and is only digits: 123456 will
+                # be cast to an int, "123456" will be a str. since the deviceID is unquoted str of digits, it is
+                # cast to an int. Recast back to a str.
+                raw_id = str(raw_device["deviceID"])
                 home_id = raw_id[:9]
                 raw_dev = raw_id.split(home_id)[1]
                 dev_id = 0
@@ -423,7 +430,9 @@ class CyncCloudAPI:
                             pass
                         # 'children': { 001: 'fireplace lights', 002: 'fence lights' }
                         if sub_id in parent["children"]:
-                            logger.error(f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled...")
+                            logger.error(
+                                f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled..."
+                            )
                         else:
                             logger.info(
                                 f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent ({dev_id}) named: {parent['name']}"
@@ -431,9 +440,22 @@ class CyncCloudAPI:
                             parent["children"][sub_id] = dev_name
                             continue
                     else:
-                        logger.warning(f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, skipping sub-device. Please open an issue with debug logs enabled...")
+                        logger.warning(
+                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, skipping sub-device. Please open an issue with debug logs enabled..."
+                        )
                         # fixme: staging for sub-device before known parent? parse them all then go through and remove sub devices?
-                        continue
+                        if dev_id in sub_dev_reg:
+                            # another child already populated, check for dupe then add
+                            if sub_id in sub_dev_reg[dev_id]:
+                                logger.error(
+                                    f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled..."
+                                )
+                            else:
+                                logger.info(
+                                    f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in home '{raw_home['name']}' devices registry until parent device is parsed"
+                                )
+                                sub_dev_reg[dev_id][sub_id] = dev_name
+                                continue
 
                 # data from: https://github.com/baudneo/cync-lan/issues/8
                 # { "hvacSystem": { "changeoverMode": 0, "auxHeatStages": 1, "auxFurnaceType": 1, "stages": 1, "furnaceType": 1, "type": 2, "powerLines": 1 },
@@ -448,9 +470,7 @@ class CyncCloudAPI:
                         f"{lp} Found HVAC device '{dev_name}' (ID: {dev_id}): {hvac_cfg}"
                     )
                     new_device["hvac"] = hvac_cfg
-                # sub-devices dealt with above, we only want to create CyncDevice objects for parent devices, the sub-devices will be added to the parent struct as children but won't be their own CyncDevice objects since they don't have all the necessary data (like mac address, etc) and aren't directly controlled in the same way as the parent device
-
-                # this cycn device is only instantiated to pull a couple of properties from: is_plug, supports_*
+                # this cync device is only instantiated to pull a couple of properties from: is_plug, supports_*
                 cync_device = CyncDevice(
                     name=dev_name,
                     cync_id=dev_id,
@@ -466,6 +486,25 @@ class CyncCloudAPI:
                 new_device["supports_rgb"] = cync_device.supports_rgb
                 new_device["fw"] = fw_ver
                 del cync_device
+                # if we made it this far, were a parent device, check sub-dev registry
+                if dev_id in sub_dev_reg:
+                    logger.info(
+                        f"{lp} Found {len(sub_dev_reg[dev_id])} staged sub-device(s) for parent device ID {dev_id} in home '{raw_home['name']}' devices registry, adding them to the parent device's children list"
+                    )
+                    if "children" not in new_device:
+                        new_device["children"] = sub_dev_reg[dev_id]
+                    else:
+                        # this should never happen since we check for existing children when we stage sub-devices, but just in case
+                        logger.error(
+                            f"{lp} Parent device ID {dev_id} in home '{raw_home['name']}' already has a 'children' key when trying to add staged sub-devices from registry, this should never happen, please open an issue with debug logs enabled..."
+                        )
+                        for sub_id, sub_name in sub_dev_reg[dev_id].items():
+                            if sub_id in new_device["children"]:
+                                logger.error(
+                                    f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' when trying to add staged sub-devices from registry, this should never happen, please open an issue with debug logs enabled..."
+                                )
+                            else:
+                                new_device["children"][sub_id] = sub_name
                 # add device to 'home' config
                 new_home["devices"][dev_id] = new_device
 
@@ -483,7 +522,9 @@ class CyncCloudAPI:
             with open(raw_file_out, "w") as _f:
                 _f.write(yaml.dump(exported_home_data))
         except Exception as file_exc:
-            logger.error(f"{lp} Failed to write RAW config to '{raw_file_out}': {file_exc}")
+            logger.error(
+                f"{lp} Failed to write RAW config to '{raw_file_out}': {file_exc}"
+            )
         else:
             logger.debug(f"{lp} Dumped RAW cloud export data to: {raw_file_out}")
 
