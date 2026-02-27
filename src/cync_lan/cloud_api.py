@@ -507,6 +507,8 @@ class CyncCloudAPI:
                 new_device["supports_temperature"] = cync_device.supports_temperature
                 new_device["supports_rgb"] = cync_device.supports_rgb
                 new_device["fw"] = fw_ver
+                new_device["mac"] = bt_mac
+                new_device["wifi_mac"] = wifi_mac
                 del cync_device
                 # if we made it this far, were a parent device, check sub-dev registry
                 if dev_id in sub_dev_reg:
