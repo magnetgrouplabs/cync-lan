@@ -279,6 +279,7 @@ device_type_map = {
         model-info="CFIXRSCR6CRVD",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(color=True, tunable_white=True),
+    ),
         
     48: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
@@ -396,7 +397,6 @@ device_type_map = {
         model_info="CLEDA199CDRV",
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(dimmable=True),
-        supported=False
     ),
         
     113: DeviceTypeInfo(
