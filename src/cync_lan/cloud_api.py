@@ -119,29 +119,29 @@ class CyncCloudAPI:
         lp = f"{self.lp}:request_otp:"
         await self._check_session()
         req_otp_url = f"{CYNC_API_BASE}two_factor/email/verifycode"
-        if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
-            logger.error(
-                f"{lp} Cync account username or password not set, cannot request OTP!"
-            )
-            return False
-        auth_data = {
-            "corp_id": CYNC_CORP_ID,
-            "email": CYNC_ACCOUNT_USERNAME,
-            "local_lang": CYNC_ACCOUNT_LANGUAGE,
-        }
-        sesh = self.http_session
-        try:
-            otp_r = await sesh.post(
-                req_otp_url,
-                json=auth_data,
-                timeout=aiohttp.ClientTimeout(total=self.api_timeout),
-            )
-            otp_r.raise_for_status()
-        except aiohttp.ClientResponseError as e:
-            logger.error(f"{lp} Failed to request OTP code: {e}")
-            return False
-        else:
-            return True
+        if CYNC_EXPORT_SOURCE is None:
+            if not CYNC_ACCOUNT_USERNAME or not CYNC_ACCOUNT_PASSWORD:
+                logger.error(
+                    f"{lp} Cync account username or password not set, cannot request OTP!"
+                )
+                return False
+            auth_data = {
+                "corp_id": CYNC_CORP_ID,
+                "email": CYNC_ACCOUNT_USERNAME,
+                "local_lang": CYNC_ACCOUNT_LANGUAGE,
+            }
+            sesh = self.http_session
+            try:
+                otp_r = await sesh.post(
+                    req_otp_url,
+                    json=auth_data,
+                    timeout=aiohttp.ClientTimeout(total=self.api_timeout),
+                )
+                otp_r.raise_for_status()
+            except aiohttp.ClientResponseError as e:
+                logger.error(f"{lp} Failed to request OTP code: {e}")
+                return False
+        return True
 
     async def send_otp(self, otp_code: int) -> bool:
         lp = f"{self.lp}:send_otp:"
@@ -399,7 +399,7 @@ class CyncCloudAPI:
             logger.debug(
                 f"{lp} 'properties' and 'bulbsArray' found in exported config, proceeding..."
             )
-            new_home = {
+            new_home: dict = {
                 kv: raw_home[kv] for kv in ("access_key", "id", "mac") if kv in raw_home
             }
             new_cfg[raw_home["name"]] = new_home
@@ -434,14 +434,13 @@ class CyncCloudAPI:
                 raw_id = str(raw_device["deviceID"])
                 home_id = raw_id[:9]
                 raw_dev = raw_id.split(home_id)[1]
-                dev_id = 0
+                dev_id = int(raw_dev[-3:])
                 sub_id = 0
                 parent = None
                 if len(raw_dev) > 3:
                     # firmwareVersion = Unknown is also an identifier for sub-devices
                     # sub-device wifiMac will always be 01:02:03:04:05:06 even if parent has WiFi, BT MACs match
-                    sub_id = int(raw_dev[3:])
-                    dev_id = int(raw_dev[-3:])
+                    sub_id = int(raw_dev[:3])
                     if dev_id in new_home["devices"]:
                         parent = new_home["devices"][dev_id]
                         if "children" not in parent:
@@ -455,17 +454,17 @@ class CyncCloudAPI:
                             logger.error(
                                 f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled..."
                             )
+                            continue
                         else:
                             logger.info(
-                                f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent ({dev_id}) named: {parent['name']}"
+                                f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent ({dev_id})"
                             )
                             parent["children"][sub_id] = dev_name
                             continue
                     else:
                         logger.warning(
-                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, skipping sub-device. Please open an issue with debug logs enabled..."
+                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, staging sub-device in registry until parent device is parsed (if parent device is not parsed by the end of the home devices list, this sub-device will be skipped and not added to the config, please open an issue with debug logs enabled...)"
                         )
-                        # fixme: staging for sub-device before known parent? parse them all then go through and remove sub devices?
                         if dev_id in sub_dev_reg:
                             # another child already populated, check for dupe then add
                             if sub_id in sub_dev_reg[dev_id]:
@@ -502,6 +501,7 @@ class CyncCloudAPI:
                     fw_version=fw_ver,
                     hvac=hvac_cfg,
                 )
+                new_device["name"] = dev_name
                 new_device["type"] = dev_type
                 new_device["is_plug"] = cync_device.is_plug
                 new_device["supports_temperature"] = cync_device.supports_temperature
