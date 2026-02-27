@@ -276,7 +276,7 @@ device_type_map = {
     47: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Reveal Full Color 6\" Recessed Downlight",
-        model-info="CFIXRSCR6CRVD",
+        model_info="CFIXRSCR6CRVD",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(color=True, tunable_white=True),
     ),
