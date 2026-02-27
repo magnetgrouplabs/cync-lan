@@ -272,6 +272,14 @@ device_type_map = {
         capabilities=LightCapabilities(color=True, tunable_white=True),
         characteristics=LightCharacteristics(lumens=1500),
     ),
+
+    47: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Reveal Full Color 6\" Recessed Downlight",
+        model-info="CFIXRSCR6CRVD",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(color=True, tunable_white=True),
+        
     48: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="C by GE (C Start Smart) Paddle Switch",
@@ -347,6 +355,13 @@ device_type_map = {
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(plug=True),
     ),
+    71: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Full Color Dynamic Effects Premium Thin Light Strip",
+        model_info="CSTR16CDID",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(tunable_white=True, color=True),
+    ),
     80: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White Light (Unknown)",
@@ -375,6 +390,15 @@ device_type_map = {
         model_name="Tunable White Light (Unknown)",
         capabilities=LightCapabilities(tunable_white=True),
     ),
+    107: DeviceTypeInfo(
+        type=DeviceClassification.SWITCH,
+        model_name="Full Color Reveal HD+ Bulb",
+        model_info="CLEDA199CDRV",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=SwitchCapabilities(dimmable=True),
+        supported=False
+    ),
+        
     113: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
