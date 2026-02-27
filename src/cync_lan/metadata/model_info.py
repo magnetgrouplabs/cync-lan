@@ -392,13 +392,12 @@ device_type_map = {
         capabilities=LightCapabilities(tunable_white=True),
     ),
     107: DeviceTypeInfo(
-        type=DeviceClassification.SWITCH,
+        type=DeviceClassification.LIGHT,
         model_name="Full Color Reveal HD+ Bulb",
         model_info="CLEDA199CDRV",
         protocol=DeviceProtocol(TCP=True),
-        capabilities=SwitchCapabilities(dimmable=True),
+        capabilities=LightCapabilities(tunable_white=True, color=True),
     ),
-        
     113: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
