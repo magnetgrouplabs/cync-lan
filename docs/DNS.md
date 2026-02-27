@@ -173,3 +173,31 @@ cm.gelighting.com.      3600    IN      A       10.0.1.9 <---- Overridden to a l
 ;; WHEN: Fri Mar 29 08:26:51 MDT 2024
 ;; MSG SIZE  rcvd: 62
 ```
+
+# AdGuard Home
+AdGuard Home works similarly to the other examples on this page, but it has also the particularity to be able to **cache** DNS entries, that might require flushing.
+
+- First of all, go to the menu **Filters** -> **DNS rewrites**.
+![AdGuard Home DNS rewrites](./assets/adguard-home-dns-rewrites.png)
+
+- For each of the `cm.gelighting.com`, `cm-sec.gelighting.com` and `cm-ge.xlink.cn` domains, click on **Add DNS rewrite** and enter the IP address of the the machine that will be running cync-lan.
+
+![AdGuard Home add DNS rewrite](./assets/adguard-home-add-dns-rewrites.png)
+
+- Your local DNS records will appear in the DNS rewrites list. Make sure you have these rules **enabled**. Look at the **Disable rewrite rules** button in the screenshot below, to tell that they are actually active or not (the button would then turn into **Enable rewrite rules**).
+![AdGuard Home list of rewrites](./assets/adguard-home-list-dns-rewrites.png)
+
+- Here is the catch: AdGuard Home caches DNS entries by default. Once you have entered the rewrite rules, click on **Clear cache** to make sure no previous IP address for these domains remains.
+![AdGuard Home Clear cache](./assets/adguard-home-dns-clear-cache.png)
+
+- Test the DNS redirection similarly to the examples above:
+
+```bash
+$nslookup cm.gelighting.com
+Server:		[IP_of_your_AdGuardHome]
+Address:	[IP_of_your_AdGuardHome#53]
+
+Non-authoritative answer:
+Name:	cm.gelighting.com
+Address: 10.0.0.132
+```
