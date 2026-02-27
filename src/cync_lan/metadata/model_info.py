@@ -399,7 +399,7 @@ device_type_map = {
         model_name="Full Color Reveal HD+ Bulb",
         model_info="CLEDA199CDRV",
         protocol=DeviceProtocol(TCP=True),
-        capabilities=SwitchCapabilities(dimmable=True),
+        capabilities=LightCapabilities(tunable_white=Treu, color=True),
     ),
     113: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
