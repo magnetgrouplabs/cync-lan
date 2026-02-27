@@ -53,9 +53,7 @@ class DeviceTypeInfo:
     protocol: DeviceProtocol = Field(default_factory=DeviceProtocol)
     capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
     characteristics: Optional[LightCharacteristics] = None
-    supported: bool = Field(
-        default=True, description="Whether this device type is supported"
-    )
+    supported: bool = Field(default=True, description="Whether this device type is supported")
 
     @property
     def model_string(self) -> str:
@@ -71,10 +69,7 @@ class DeviceTypeInfo:
                         add_str += " "
                     add_str += f"{self.characteristics.lumens} lum"
                 if self.characteristics.min_kelvin:
-                    if (
-                        self.characteristics.min_kelvin
-                        and self.characteristics.max_kelvin
-                    ):
+                    if self.characteristics.min_kelvin and self.characteristics.max_kelvin:
                         kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
                     else:
                         kelvin_data = f"{self.characteristics.min_kelvin}K"
@@ -281,6 +276,13 @@ device_type_map = {
         capabilities=LightCapabilities(color=True, tunable_white=True),
         characteristics=LightCharacteristics(lumens=1500),
     ),
+    47: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Reveal Full Color 6\" Recessed Downlight",
+        model_info="CFIXRSCR6CRVD",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(color=True, tunable_white=True),
+    ),
     48: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="C by GE (C Start Smart) Paddle Switch",
@@ -357,6 +359,13 @@ device_type_map = {
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(plug=True),
     ),
+    71: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Full Color Dynamic Effects Premium Thin Light Strip",
+        model_info="CSTR16CDID",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(tunable_white=True, color=True),
+    ),
     80: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White Light (Unknown)",
@@ -385,11 +394,18 @@ device_type_map = {
         model_name="Tunable White Light (Unknown)",
         capabilities=LightCapabilities(tunable_white=True),
     ),
+    107: DeviceTypeInfo(
+        type=DeviceClassification.SWITCH,
+        model_name="Full Color Reveal HD+ Bulb",
+        model_info="CLEDA199CDRV",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=SwitchCapabilities(dimmable=True),
+    ),
     113: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
         capabilities=SwitchCapabilities(dimmable=True),
-        supported=False,
+        supported=False
     ),
     129: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
