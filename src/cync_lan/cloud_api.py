@@ -463,8 +463,9 @@ class CyncCloudAPI:
                             continue
                     else:
                         logger.warning(
-                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, staging sub-device in registry until parent device is parsed (if parent device is not parsed by the end of the home devices list, this sub-device will be skipped and not added to the config, please open an issue with debug logs enabled...)"
+                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, staging sub-device in registry..."
                         )
+
                         if dev_id in sub_dev_reg:
                             # another child already populated, check for dupe then add
                             if sub_id in sub_dev_reg[dev_id]:
@@ -476,8 +477,14 @@ class CyncCloudAPI:
                                     f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in home '{raw_home['name']}' devices registry until parent device is parsed"
                                 )
                                 sub_dev_reg[dev_id][sub_id] = dev_name
-                                continue
-
+                            continue
+                        else:
+                            logger.info(
+                                f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in home '{raw_home['name']}' devices registry until parent device is parsed"
+                            )
+                            sub_dev_reg[dev_id] = {sub_id: dev_name}
+                            continue
+                # END OF SUB DEVICE PARSING
                 # data from: https://github.com/baudneo/cync-lan/issues/8
                 # { "hvacSystem": { "changeoverMode": 0, "auxHeatStages": 1, "auxFurnaceType": 1, "stages": 1, "furnaceType": 1, "type": 2, "powerLines": 1 },
                 # "thermostatSensors": [ { "pin": "025572", "name": "Living Room", "type": "savant" }, { "pin": "044604", "name": "Bedroom Sensor", "type": "savant" }, { "pin": "022724", "name": "Thermostat sensor 3", "type": "savant" } ] } ]
@@ -516,21 +523,19 @@ class CyncCloudAPI:
                         f"{lp} Found {len(sub_dev_reg[dev_id])} staged sub-device(s) for parent device ID {dev_id} in home '{raw_home['name']}' devices registry, adding them to the parent device's children list"
                     )
                     if "children" not in new_device:
-                        new_device["children"] = sub_dev_reg[dev_id]
+                        new_device["children"] = sub_dev_reg.pop(dev_id)
                     else:
                         # this should never happen since we check for existing children when we stage sub-devices, but just in case
                         logger.error(
                             f"{lp} Parent device ID {dev_id} in home '{raw_home['name']}' already has a 'children' key when trying to add staged sub-devices from registry, this should never happen, please open an issue with debug logs enabled..."
                         )
-                        for sub_id, sub_name in sub_dev_reg[dev_id].items():
-                            if sub_id in new_device["children"]:
-                                logger.error(
-                                    f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' when trying to add staged sub-devices from registry, this should never happen, please open an issue with debug logs enabled..."
-                                )
-                            else:
-                                new_device["children"][sub_id] = sub_name
+                        continue
+                else:
+                    logger.debug(f"{lp} No staged sub-devices found for parent device ID {dev_id} in home '{raw_home['name']}' devices registry")
                 # add device to 'home' config
                 new_home["devices"][dev_id] = new_device
+
+        # out of parsing loop, if a device with children is processed before the children
 
         # write raw exported config to file for debugging, only if export source is not configured as a file
         if CYNC_EXPORT_SOURCE is None:

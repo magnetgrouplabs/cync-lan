@@ -113,6 +113,10 @@ class nCyncServer:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         # figured out from debugging using socat
+        # AES256-SHA256 to cloud
+        # devices: ECDHE-RSA-AES256-GCM-SHA384
+        # tls 1.2
+
         ciphers = [
             "ECDHE-RSA-AES256-GCM-SHA384",
             "ECDHE-RSA-AES128-GCM-SHA256",
@@ -132,9 +136,10 @@ class nCyncServer:
         ssl_context.set_ciphers(":".join(ciphers))
         return ssl_context
 
-    async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None):
+    async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None, sub_id: Optional[int] = None):
         """Extracted status packet parsing, handles mqtt publishing and device state changes."""
         _id = raw_state[0]
+        # for children, we need sub_id to compare to device.children
         device = g.ncync_server.devices.get(_id)
         if device is None:
             logger.warning(
@@ -189,7 +194,7 @@ class nCyncServer:
                     else None
                 )
             await g.mqtt_client.parse_device_status(
-                device.id, new_state, from_pkt=from_pkt
+                device.id, new_state, from_pkt=from_pkt, sub_id=sub_id
             )
             device.state = state
             device.brightness = brightness

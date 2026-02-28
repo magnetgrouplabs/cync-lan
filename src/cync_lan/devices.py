@@ -81,7 +81,7 @@ class CyncDevice:
         if cync_id is None:
             raise ValueError("ID must be provided to constructor")
         self.id = cync_id
-        self.children = children
+        self.children: Optional[Dict[int, str]] = children
         self.type = cync_type
         self.metadata = (
             device_type_map[self.type] if cync_type in device_type_map else None
@@ -228,6 +228,10 @@ class CyncDevice:
         self._is_plug = value
 
     @property
+    def has_children(self) -> bool:
+        return bool(self.children)
+
+    @property
     def is_fan_controller(self):
         if self._is_fan_controller is not None:
             return self._is_fan_controller
@@ -294,7 +298,7 @@ class CyncDevice:
         # logger.debug(f"{lp} new data: ctrl_byte={id_byte} rollover_byte={rollover_byte} // {self.control_bytes=}")
         return self.control_bytes
 
-    async def set_power(self, state: int):
+    async def set_power(self, state: int, sub_id: Optional[int] = None):
         """
         Send raw data to control device state (1=on, 0=off).
 
@@ -302,6 +306,7 @@ class CyncDevice:
             a 0x83 internal status packet, which we use to change HASS device state.
         """
         lp = f"{self.lp}set_power:"
+        logger.debug(f"DBG>>> SUB-ID? --> {sub_id = }")
         if state not in (0, 1):
             logger.error(f"{lp} Invalid state! must be 0 or 1")
             return
@@ -326,7 +331,7 @@ class CyncDevice:
             0x00,
             0x00,
             self.id,
-            0x00,
+            sub_id if sub_id is not None else 0x00,
             0xD0,
             0x11,
             0x02,
@@ -360,7 +365,7 @@ class CyncDevice:
                     msg_id=cmsg_id,
                     message=payload_bytes,
                     sent_at=time.time(),
-                    callback=partial(g.mqtt_client.update_device_state, self, state),
+                    callback=partial(g.mqtt_client.update_device_state, self, state, sub_id),
                 )
                 bridge_device.messages.control[cmsg_id] = m_cb
                 sent[bridge_device.address] = cmsg_id
@@ -413,7 +418,7 @@ class CyncDevice:
         else:
             return True
 
-    async def set_brightness(self, bri: int):
+    async def set_brightness(self, bri: int, sub_id: Optional[int] = None):
         """
         Send raw data to control device brightness (0-100). Fans are 0-255.
         """
@@ -451,7 +456,7 @@ class CyncDevice:
             0,
             0,
             self.id,
-            0,
+            sub_id if sub_id is not None else 0,
             240,
             17,
             2,
@@ -504,7 +509,7 @@ class CyncDevice:
             f"{lp} Sent brightness command, current: {self._brightness} new: {bri} to TCP devices: {sent} in {elapsed:.5f} seconds"
         )
 
-    async def set_temperature(self, temp: int):
+    async def set_temperature(self, temp: int, sub_id: Optional[int] = None):
         """
         Send raw data to control device white temperature (0-100)
 
@@ -543,7 +548,7 @@ class CyncDevice:
             0,
             0,
             self.id,
-            0,
+            sub_id if sub_id is not None else 0,
             240,
             17,
             2,
@@ -597,7 +602,7 @@ class CyncDevice:
             f"devices: {sent} in {elapsed:.5f} seconds"
         )
 
-    async def set_rgb(self, red: int, green: int, blue: int):
+    async def set_rgb(self, red: int, green: int, blue: int, sub_id: Optional[int] = None):
         """
         Send raw data to control device RGB color (0-255 for each channel).
 
@@ -643,7 +648,7 @@ class CyncDevice:
             0,
             0,
             self.id,
-            0,
+            sub_id if sub_id is not None else 0,
             240,
             17,
             2,
@@ -696,7 +701,7 @@ class CyncDevice:
             f"{lp} Sent RGB command, current: {self.red}, {self.green}, {self.blue} - new: {red}, {green}, {blue} to TCP devices {sent} in {elapsed:.5f} seconds"
         )
 
-    async def set_lightshow(self, show: str):
+    async def set_lightshow(self, show: str, sub_id: Optional[int] = None):
         """
             Set the device into a light show
 
@@ -775,7 +780,7 @@ class CyncDevice:
             0,
             0,
             self.id,
-            0,
+            sub_id if sub_id is not None else 0,
             226,
             17,
             2,
@@ -1482,6 +1487,7 @@ class CyncTCPDevice:
                             # This data can be wrong! sometimes reports wrong state and the RGB colors are slightly different from each device.
                             # TODO: need to not parse this data if we just issued a command or we do like mesh info and create a voting system
                             if ctrl_bytes == bytes([0xFA, 0xDB]):
+
                                 extra_ctrl_bytes = packet_data[7]
                                 if extra_ctrl_bytes == 0x13:
                                     # fa db 13 is internal status
@@ -1507,6 +1513,18 @@ class CyncTCPDevice:
                                     _green = packet_data[g_idx]
                                     _blue = packet_data[b_idx]
                                     connected_to_mesh = packet_data[connected_idx]
+                                    ___dev = g.ncync_server.devices.get(dev_id)
+                                    sub_id = 0
+                                    if ___dev.has_children:
+                                        children = ___dev.children
+                                        # fucked if I know, lmao
+                                        sub_id = (packet_data[state_idx + 1] % len(___dev.children)) + 1
+                                    if ___dev:
+                                        dev_name = f'"{___dev.name}" (ID: {dev_id}){" [sub ID: {}]".format(sub_id) if sub_id is not None else ""}'
+                                    else:
+                                        dev_name = f"Device ID: {dev_id}{"-{}".format(sub_id) if sub_id is not None else ""}"
+
+                                    # todo: refactor
                                     raw_status: bytes = bytes(
                                         [
                                             dev_id,
@@ -1519,22 +1537,18 @@ class CyncTCPDevice:
                                             connected_to_mesh,
                                         ]
                                     )
-                                    ___dev = g.ncync_server.devices.get(dev_id)
-                                    if ___dev:
-                                        dev_name = f'"{___dev.name}" (ID: {dev_id})'
-                                    else:
-                                        dev_name = f"Device ID: {dev_id}"
+
                                     _dbg_msg = ""
-                                    if CYNC_RAW is True:
-                                        _dbg_msg = (
-                                            f"\n\n"
-                                            f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
-                                        )
+                                    # if CYNC_RAW is True:
+                                    _dbg_msg = (
+                                        f"\n\n"
+                                        f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
+                                    )
                                     logger.debug(
                                         f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
                                     )
                                     await g.ncync_server.parse_status(
-                                        raw_status, from_pkt="0x83"
+                                        raw_status, from_pkt="0x83", sub_id=sub_id
                                     )
                                     # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                                     # LED controller has this pattern
@@ -1649,7 +1663,7 @@ class CyncTCPDevice:
                             # some device firmwares respond with a message received packet before replying with the data
                             # example: 7e 1f 00 00 00 f9 52 01 00 00 53 7e (12 bytes, 0x7e bound. 10 bytes of data)
                             if ctrl_bytes == bytes([0xF9, 0x52]):
-                                # logger.debug(f"{lp} got a mesh info response (len: {inner_struct_len}): {inner_struct.hex(' ')}")
+                                logger.debug(f"{lp} got a mesh info response (len: {inner_struct_len}): {inner_struct.hex(' ')}\n\n{bytes2list(inner_struct)}")
                                 if inner_struct_len < 15:
                                     if inner_struct_len == 10:
                                         # server sent mesh info request, this seems to be the ack?
@@ -1773,7 +1787,7 @@ class CyncTCPDevice:
                                                             #     ]
                                                             # )
                                                             logger.debug(
-                                                                f"{self.lp}parse:x{data[0]:02x}: Setting TCP"
+                                                                f"{self.lp}parse:0x{data[0]:02x}: Setting TCP"
                                                                 f" device Cync ID to: {self.id}"
                                                             )
 
@@ -1824,15 +1838,16 @@ class CyncTCPDevice:
                                             logger.debug(
                                                 f"{lp} Parsing initial connection device status data"
                                             )
-                                            await asyncio.gather(
-                                                *[
-                                                    g.ncync_server.parse_status(
-                                                        bytes(status),
-                                                        from_pkt="'mesh info'",
-                                                    )
-                                                    for status in _m
-                                                ]
-                                            )
+
+                                            # await asyncio.gather(
+                                            #     *[
+                                            #         g.ncync_server.parse_status(
+                                            #             bytes(status),
+                                            #             from_pkt="'mesh info'",
+                                            #         )
+                                            #         for status in _m
+                                            #     ]
+                                            # )
 
                                         # mesh_info["status"] = _m
                                         # mesh_info["id_from"] = self.id
