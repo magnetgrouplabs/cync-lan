@@ -453,3 +453,15 @@ class FanSpeed(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     MAX = "max"
+
+class EndpointState(BaseModel):
+    """Holds the individual state for a specific endpoint (outlet, bulb, etc.)"""
+    sub_id: int
+    name: str
+    online: bool = False
+    state: int = 0
+    brightness: Optional[int] = None
+    temperature: int = 0
+    red: int = 0
+    green: int = 0
+    blue: int = 0

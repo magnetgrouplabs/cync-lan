@@ -500,11 +500,14 @@ class MQTTClient:
             return True
         return False
 
-    async def update_device_state(self, device: CyncDevice, state: int, sub_id: int) -> bool:
+    async def update_device_state(self, device: CyncDevice, state: int, sub_id: Optional[int] = None) -> bool:
         """Update the device state and publish to MQTT for HASS devices to update."""
         device.online = True
-        device.state = state
-        logger.debug(f"update_device_status: {sub_id = }")
+        _id = sub_id if sub_id is not None else 0
+        endpoint = device.endpoints.get(_id, device.endpoints[0])
+        endpoint.state = state
+
+        logger.debug(f"update_device_status: sub_id={_id}")
         power_status = "OFF" if state == 0 else "ON"
         mqtt_dev_state = {"state": power_status}
         if device.is_plug or device.is_switch:
@@ -516,7 +519,10 @@ class MQTTClient:
     async def update_brightness(self, device: CyncDevice, bri: int, sub_id: Optional[int] = None) -> bool:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         device.online = True
-        device.brightness = bri
+        _id = sub_id if sub_id is not None else 0
+        endpoint = device.endpoints.get(_id, device.endpoints[0])
+        endpoint.brightness = bri
+
         state = "ON"
         if bri == 0:
             state = "OFF"
@@ -525,19 +531,22 @@ class MQTTClient:
             device, json.dumps(mqtt_dev_state).encode(), sub_id
         )
 
-    async def update_temperature(self, device: CyncDevice, temp: int) -> bool:
+    async def update_temperature(self, device: CyncDevice, temp: int, sub_id: Optional[int] = None) -> bool:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
         device.online = True
+        _id = sub_id if sub_id is not None else 0
+        endpoint = device.endpoints.get(_id, device.endpoints[0])
+
         if device.supports_temperature:
             mqtt_dev_state = {
                 "state": "ON",
                 "color_mode": "color_temp",
                 "color_temp": self.cync2kelvin(temp),
             }
-            device.temperature = temp
-            device.red = 0
-            device.green = 0
-            device.blue = 0
+            endpoint.temperature = temp
+            endpoint.red = 0
+            endpoint.green = 0
+            endpoint.blue = 0
             return await self.send_device_status(
                 device, json.dumps(mqtt_dev_state).encode(), sub_id
             )
@@ -546,24 +555,27 @@ class MQTTClient:
     async def update_rgb(self, device: CyncDevice, rgb: tuple[int, int, int], sub_id: Optional[int] = None) -> bool:
         """Update the device RGB and publish to MQTT for HASS devices to update. Intended for callbacks"""
         device.online = True
+        _id = sub_id if sub_id is not None else 0
+        endpoint = device.endpoints.get(_id, device.endpoints[0])
+
         if device.supports_rgb and (
-            any(
-                [
-                    rgb[0] is not None,
-                    rgb[1] is not None,
-                    rgb[2] is not None,
-                ]
-            )
+                any(
+                    [
+                        rgb[0] is not None,
+                        rgb[1] is not None,
+                        rgb[2] is not None,
+                    ]
+                )
         ):
             mqtt_dev_state = {
                 "state": "ON",
                 "color_mode": "rgb",
                 "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]},
             }
-            device.red = rgb[0]
-            device.green = rgb[1]
-            device.blue = rgb[2]
-            device.temperature = 254
+            endpoint.red = rgb[0]
+            endpoint.green = rgb[1]
+            endpoint.blue = rgb[2]
+            endpoint.temperature = 254
             return await self.send_device_status(
                 device, json.dumps(mqtt_dev_state).encode(), sub_id
             )
@@ -600,12 +612,15 @@ class MQTTClient:
         return False
 
     async def parse_device_status(
-        self, device_id: int, device_status: DeviceStatus, *args, **kwargs
+            self, device_id: int, device_status: DeviceStatus, *args, **kwargs
     ) -> bool:
-        """Parse device status and publish to MQTT for HASS devices to update. Useful for device status packets that report the complete device state"""
+        """Parse device status and publish to MQTT for HASS devices to update."""
         lp = f"{self.lp}parse status:"
         from_pkt = kwargs.get("from_pkt")
-        sub_id = kwargs.get("sub_id")
+        sub_id = kwargs.get("sub_id", 0)
+        if sub_id is None:
+            sub_id = 0
+
         if from_pkt:
             lp = f"{lp}{from_pkt}:"
         if device_id not in g.ncync_server.devices:
@@ -614,11 +629,21 @@ class MQTTClient:
                 f"you may need to re-export devices from your Cync account"
             )
             return False
+
         device: CyncDevice = g.ncync_server.devices[device_id]
-        # if device.build_status() == device_status:
-        #     # logger.debug(f"{lp} Device status unchanged, skipping...")
-        #     return
-        power_status = "OFF" if device_status.state == 0 else "ON"
+        endpoint = device.endpoints.get(sub_id, device.endpoints[0])
+
+        # Sync the incoming packet data to the endpoint's cache
+        endpoint.state = device_status.state
+        if device_status.brightness is not None:
+            endpoint.brightness = device_status.brightness
+        if device_status.temperature is not None:
+            endpoint.temperature = device_status.temperature
+            endpoint.red = device_status.red
+            endpoint.green = device_status.green
+            endpoint.blue = device_status.blue
+
+        power_status = "OFF" if endpoint.state == 0 else "ON"
         mqtt_dev_state: Union[Dict[str, Union[int, str, bytes, dict, list]], bytes] = {
             "state": power_status
         }
@@ -627,32 +652,32 @@ class MQTTClient:
             mqtt_dev_state = power_status.encode()
 
         else:
-            if device_status.brightness is not None:
-                mqtt_dev_state["brightness"] = device_status.brightness
+            if endpoint.brightness is not None:
+                mqtt_dev_state["brightness"] = endpoint.brightness
 
-            if device_status.temperature is not None:
+            if endpoint.temperature is not None:
                 if device.supports_rgb and (
-                    any(
-                        [
-                            device_status.red is not None,
-                            device_status.green is not None,
-                            device_status.blue is not None,
-                        ]
-                    )
-                    and device_status.temperature > 100
+                        any(
+                            [
+                                endpoint.red is not None,
+                                endpoint.green is not None,
+                                endpoint.blue is not None,
+                            ]
+                        )
+                        and endpoint.temperature > 100
                 ):
                     mqtt_dev_state["color_mode"] = "rgb"
                     mqtt_dev_state["color"] = {
-                        "r": device_status.red,
-                        "g": device_status.green,
-                        "b": device_status.blue,
+                        "r": endpoint.red,
+                        "g": endpoint.green,
+                        "b": endpoint.blue,
                     }
                 elif device.supports_temperature and (
-                    0 <= device_status.temperature <= 100
+                        0 <= endpoint.temperature <= 100
                 ):
                     mqtt_dev_state["color_mode"] = "color_temp"
                     mqtt_dev_state["color_temp"] = self.cync2kelvin(
-                        device_status.temperature
+                        endpoint.temperature
                     )
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
 

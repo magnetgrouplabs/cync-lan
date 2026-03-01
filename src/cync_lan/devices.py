@@ -35,6 +35,7 @@ from cync_lan.structs import (
     DEVICE_STRUCTS,
     ALL_HEADERS,
     FanSpeed,
+    EndpointState,
 )
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 
@@ -66,16 +67,16 @@ class CyncDevice:
     metadata: Optional[DeviceTypeInfo] = None
 
     def __init__(
-        self,
-        cync_id: int,
-        cync_type: Optional[int] = None,
-        name: Optional[str] = None,
-        mac: Optional[str] = None,
-        wifi_mac: Optional[str] = None,
-        fw_version: Optional[str] = None,
-        home_id: Optional[int] = None,
-        hvac: Optional[dict] = None,
-        children: Optional[Dict[int, str]] = None,
+            self,
+            cync_id: int,
+            cync_type: Optional[int] = None,
+            name: Optional[str] = None,
+            mac: Optional[str] = None,
+            wifi_mac: Optional[str] = None,
+            fw_version: Optional[str] = None,
+            home_id: Optional[int] = None,
+            hvac: Optional[dict] = None,
+            children: Optional[Dict[int, str]] = None,
     ):
         self.control_bytes = bytes([0x00, 0x00])
         if cync_id is None:
@@ -98,16 +99,13 @@ class CyncDevice:
         self.lp = f"CyncDevice:{self.name}({cync_id}):"
         self._status: DeviceStatus = DeviceStatus()
         self._mesh_alive_byte: Union[int, str] = 0x00
-        # state: 0:off 1:on
-        self._state: int = 0
-        # 0-100
-        self._brightness: Optional[int] = None
-        # FOR LIGHTS: 0-100 (warm to cool), 129 = in effect mode, 254 = in RGB mode
-        self._temperature: int = 0
-        # 0-255
-        self._r: int = 0
-        self._g: int = 0
-        self._b: int = 0
+        self.endpoints: Dict[int, EndpointState] = {}
+        if self.children:
+            for c_id, c_name in self.children.items():
+                self.endpoints[c_id] = EndpointState(sub_id=c_id, name=c_name)
+        else:
+            self.endpoints[0] = EndpointState(sub_id=0, name=self.name)
+
         if hvac is not None:
             self.hvac = hvac
             self._is_hvac = True
@@ -860,16 +858,16 @@ class CyncDevice:
     def current_status(self) -> List[int]:
         """
         Return the current status of the device as a list
-
         :return: [state, brightness, temperature, red, green, blue]
         """
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
         return [
-            self._state,
-            self._brightness,
-            self._temperature,
-            self._r,
-            self._g,
-            self._b,
+            ep.state,
+            ep.brightness,
+            ep.temperature,
+            ep.red,
+            ep.green,
+            ep.blue,
         ]
 
     @property
@@ -883,7 +881,8 @@ class CyncDevice:
 
     @property
     def state(self):
-        return self._state
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.state
 
     @state.setter
     def state(self, value: Union[int, bool, str]):
@@ -909,75 +908,88 @@ class CyncDevice:
         else:
             raise ValueError(f"Invalid value for state: {value}")
 
-        if value != self._state:
-            self._state = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.state:
+            ep.state = value
 
     @property
     def brightness(self):
-        return self._brightness
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.brightness
 
     @brightness.setter
     def brightness(self, value: int):
         if value < 0 or value > 255:
             raise ValueError(f"Brightness must be between 0 and 255, got: {value}")
-        if value != self._brightness:
-            self._brightness = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.brightness:
+            ep.brightness = value
 
     @property
     def temperature(self):
-        return self._temperature
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.temperature
 
     @temperature.setter
     def temperature(self, value: int):
         if value < 0 or value > 255:
             raise ValueError(f"Temperature must be between 0 and 255, got: {value}")
-        if value != self._temperature:
-            self._temperature = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.temperature:
+            ep.temperature = value
 
     @property
     def red(self):
-        return self._r
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.red
 
     @red.setter
     def red(self, value: int):
         if value < 0 or value > 255:
             raise ValueError(f"Red must be between 0 and 255, got: {value}")
-        if value != self._r:
-            self._r = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.red:
+            ep.red = value
 
     @property
     def green(self):
-        return self._g
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.green
 
     @green.setter
     def green(self, value: int):
         if value < 0 or value > 255:
             raise ValueError(f"Green must be between 0 and 255, got: {value}")
-        if value != self._g:
-            self._g = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.green:
+            ep.green = value
 
     @property
     def blue(self):
-        return self._b
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return ep.blue
 
     @blue.setter
     def blue(self, value: int):
         if value < 0 or value > 255:
             raise ValueError(f"Blue must be between 0 and 255, got: {value}")
-        if value != self._b:
-            self._b = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != ep.blue:
+            ep.blue = value
 
     @property
     def rgb(self):
         """Return the RGB color as a list"""
-        return [self._r, self._g, self._b]
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        return [ep.red, ep.green, ep.blue]
 
     @rgb.setter
     def rgb(self, value: List[int]):
         if len(value) != 3:
             raise ValueError(f"RGB value must be a list of 3 integers, got: {value}")
-        if value != self.rgb:
-            self._r, self._g, self._b = value
+        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
+        if value != [ep.red, ep.green, ep.blue]:
+            ep.red, ep.green, ep.blue = value
 
     def __repr__(self):
         return f"<CyncDevice: {self.id}>"
@@ -1042,7 +1054,8 @@ class CyncTCPDevice:
         self._closing = False
         self.control_bytes = [0x00, 0x00]
 
-    async def can_connect(self):
+    async def can_connect(self) -> bool:
+        """Can this Cync TCP device connect? Based on TCP_WHITELIST and MAX_TCP_CONN"""
         lp = f"{self.lp}"
         tcp_dev_len = len(g.ncync_server.tcp_devices)
         num_attempts = g.ncync_server.tcp_conn_attempts[self.address]
@@ -1514,29 +1527,6 @@ class CyncTCPDevice:
                                     _blue = packet_data[b_idx]
                                     connected_to_mesh = packet_data[connected_idx]
                                     ___dev = g.ncync_server.devices.get(dev_id)
-                                    sub_id = 0
-                                    if ___dev.has_children:
-                                        children = ___dev.children
-                                        # fucked if I know, lmao
-                                        sub_id = (packet_data[state_idx + 1] % len(___dev.children)) + 1
-                                    if ___dev:
-                                        dev_name = f'"{___dev.name}" (ID: {dev_id}){" [sub ID: {}]".format(sub_id) if sub_id is not None else ""}'
-                                    else:
-                                        dev_name = f"Device ID: {dev_id}{"-{}".format(sub_id) if sub_id is not None else ""}"
-
-                                    # todo: refactor
-                                    raw_status: bytes = bytes(
-                                        [
-                                            dev_id,
-                                            state,
-                                            bri,
-                                            tmp,
-                                            _red,
-                                            _green,
-                                            _blue,
-                                            connected_to_mesh,
-                                        ]
-                                    )
 
                                     _dbg_msg = ""
                                     # if CYNC_RAW is True:
@@ -1544,12 +1534,39 @@ class CyncTCPDevice:
                                         f"\n\n"
                                         f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
                                     )
-                                    logger.debug(
-                                        f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}"
-                                    )
-                                    await g.ncync_server.parse_status(
-                                        raw_status, from_pkt="0x83", sub_id=sub_id
-                                    )
+
+                                    if ___dev:
+                                        if ___dev.has_children:
+                                            # For multi-endpoint devices, brightness acts as the bitmask
+                                            for c_id in ___dev.children.keys():
+                                                bit_shift = c_id - 1
+                                                child_state = 1 if (bri & (1 << bit_shift)) else 0
+
+                                                dev_name = f'"{___dev.name}" (ID: {dev_id}) [sub ID: {c_id}]'
+                                                raw_status = bytes([dev_id, child_state, 0, tmp, _red, _green, _blue,
+                                                                    connected_to_mesh])
+
+                                                logger.debug(
+                                                    f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
+                                                await g.ncync_server.parse_status(raw_status, from_pkt="0x83",
+                                                                                  sub_id=c_id)
+                                        else:
+                                            # Standard single endpoint
+                                            dev_name = f'"{___dev.name}" (ID: {dev_id})'
+                                            raw_status = bytes(
+                                                [dev_id, state, bri, tmp, _red, _green, _blue, connected_to_mesh])
+
+                                            logger.debug(
+                                                f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
+                                            await g.ncync_server.parse_status(raw_status, from_pkt="0x83", sub_id=0)
+                                    else:
+                                        # Unknown device fallback
+                                        dev_name = f"Device ID: {dev_id}"
+                                        raw_status = bytes(
+                                            [dev_id, state, bri, tmp, _red, _green, _blue, connected_to_mesh])
+                                        logger.debug(
+                                            f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
+                                        await g.ncync_server.parse_status(raw_status, from_pkt="0x83", sub_id=0)
                                     # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                                     # LED controller has this pattern
                                     bad_chksum_msg = ""
