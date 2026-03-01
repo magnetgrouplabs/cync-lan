@@ -83,8 +83,7 @@ class CyncLAN:
         lp = f"{self.lp}init:"
         check_for_uuid()
         logger.debug(
-            f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing, "
-            f"setting up event loop signal handlers for SIGINT & SIGTERM..."
+            f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing..."
         )
 
     async def start(self):

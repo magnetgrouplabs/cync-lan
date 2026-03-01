@@ -153,7 +153,7 @@ def parse_unbound_firmware_version(
 
 async def parse_config(cfg_file: Path):
     """Parse the exported Cync device config file and create devices from it."""
-    from cync_lan.devices import CyncDevice
+    from cync_lan.devices import CyncNode
 
     lp = "parse_config:"
     logger.debug(f"{lp} reading devices from Cync config file: {cfg_file.as_posix()}")
@@ -164,18 +164,18 @@ async def parse_config(cfg_file: Path):
         raw_config = await asyncio.get_event_loop().run_in_executor(
             None, yaml.safe_load, cfg_file.read_text(encoding="utf-8")
         )
-
     except Exception as e:
         logger.error(f"{lp} Error reading config file: {e}", exc_info=True)
         raise e
 
-    devices = {}
+    nodes: Dict[int, CyncNode] = {}
     # parse homes and devices
     main_key = "account data"
     if main_key not in raw_config:
         if "exported_homes" in raw_config:
             logger.warning(
-                f"{lp} 'account data' key not found in config file, but 'exported_homes' key exists. This may be an older export format. Attempting to parse devices from 'exported_homes'..."
+                f"{lp} 'account data' key not found in config file, but 'exported_homes' key exists. This may be an "
+                f"older export format. Attempting to parse devices from 'exported_homes'..."
             )
             main_key = "exported_homes"
     for cync_home_name, home_cfg in raw_config[main_key].items():
@@ -205,7 +205,7 @@ async def parse_config(cfg_file: Path):
                         f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                     )
                     continue
-            children = None
+            endpoints = None
             fw_version = (
                 cync_device["fw"] if "fw" in cync_device and cync_device["fw"] else None
             )
@@ -221,7 +221,8 @@ async def parse_config(cfg_file: Path):
                 if btmac:
                     if isinstance(btmac, int):
                         logger.warning(
-                            f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'mac' is somehow an int -> {btmac}, please quote the mac address to force it to a string in the config file"
+                            f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'mac' is somehow an int -> "
+                            f"{btmac}, please quote the mac address to force it to a string in the config file"
                         )
 
             if "wifi_mac" in cync_device:
@@ -229,27 +230,26 @@ async def parse_config(cfg_file: Path):
                 if wmac:
                     if isinstance(wmac, int):
                         logger.debug(
-                            f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> {wmac}, please quote the mac address to force it to a string in the config file"
+                            f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> "
+                            f"{wmac}, please quote the mac address to force it to a string in the config file"
                         )
-            if "children" in cync_device and cync_device["children"]:
-                logger.debug(
-                    f"{lp} Device '{device_name}' (ID: {cync_id}) has children..."
-                )
-                children = cync_device["children"]
-
-            new_device = CyncDevice(
+            if "endpoints" in cync_device and (endpoints := cync_device["endpoints"]) and (num_ends := len(endpoints)) > 1:
+                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has {num_ends} endpoints: {endpoints}")
+            logger.debug(f"\n\n\nDBG>>> {endpoints = }")
+            # DBG>>> endpoints = {1: 'Outlet 1 L', 2: 'Outlet 2 R'}
+            # fixme, need to convert to EndpointState and send { ep_state.id: ep_state }
+            nodes[cync_id] = CyncNode(
                 name=device_name,
-                cync_id=cync_id,
+                node_id=cync_id,
                 fw_version=fw_version,
                 home_id=home_id,
                 mac=btmac,
                 wifi_mac=wmac,
-                cync_type=dev_type,
-                children=children,
+                dev_type=dev_type,
+                endpoints=endpoints,
             )
-            devices[cync_id] = new_device
 
-    return devices
+    return nodes
 
 
 def check_python_version():

@@ -6,8 +6,8 @@ from typing import Dict, Optional, Union
 import uvloop
 
 from cync_lan.const import CYNC_SRV_PORT, CYNC_SRV_HOST, CYNC_RAW, CYNC_LOG_NAME
-from cync_lan.devices import CyncDevice, CyncTCPDevice
-from cync_lan.structs import GlobalObject, DeviceStatus
+from cync_lan.devices import CyncNode, CyncTCPDevice
+from cync_lan.structs import GlobalObject, DeviceStatus, EndpointState
 
 __all__ = [
     "nCyncServer",
@@ -22,7 +22,7 @@ class nCyncServer:
     The Wi-Fi devices translate messages, status updates and commands to/from the Cync BTLE mesh.
     """
 
-    devices: Dict[int, CyncDevice] = {}
+    devices: Dict[int, CyncNode] = {}
     tcp_devices: Dict[str, Optional[CyncTCPDevice]] = {}
     shutting_down: bool = False
     running: bool = False
@@ -41,12 +41,15 @@ class nCyncServer:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, devices: dict):
-        self.devices = devices
+    def __init__(self, devices: Dict[int, CyncNode]):
+        self.devices: Dict[int, CyncNode] = devices
+        logger.debug(f"\n\nnCyncServer.__init__() DBG>>> {self.devices[46].endpoints = }")
+        logger.debug(f"\n\nnCyncServer.__init__() DBG>>> {self.devices[45].endpoints = }\n\n")
+
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
-        self.host = CYNC_SRV_HOST
-        self.port = CYNC_SRV_PORT
+        self.host: str = CYNC_SRV_HOST
+        self.port: str = CYNC_SRV_PORT
         g.reload_env()
         self.cert_file = g.env.cync_srv_ssl_cert
         self.key_file = g.env.cync_srv_ssl_key
@@ -76,7 +79,6 @@ class nCyncServer:
                         f"{lp} Removed TCP device {device.address} from server.tcp_devices."
                     )
                     # "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
-                    # TODO: publish the device removal
                     if g.mqtt_client is not None:
                         await g.mqtt_client.publish(
                             f"{g.env.mqtt_topic}/status/bridge/tcp_devices/connected",
@@ -96,8 +98,6 @@ class nCyncServer:
         lp = f"{self.lp}add_tcp_device:"
         self.tcp_devices[device.address] = device
         logger.debug(f"{lp} Added TCP device {device.address} to server.")
-        # TODO: publish updated TCP devices connected
-        # "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
         if g.mqtt_client is not None:
             # publish the device removal
             await g.mqtt_client.publish(
@@ -116,7 +116,6 @@ class nCyncServer:
         # AES256-SHA256 to cloud
         # devices: ECDHE-RSA-AES256-GCM-SHA384
         # tls 1.2
-
         ciphers = [
             "ECDHE-RSA-AES256-GCM-SHA384",
             "ECDHE-RSA-AES128-GCM-SHA256",
@@ -136,74 +135,46 @@ class nCyncServer:
         ssl_context.set_ciphers(":".join(ciphers))
         return ssl_context
 
-    async def parse_status(self, raw_state: bytes, from_pkt: Optional[str] = None, sub_id: Optional[int] = None):
+    async def handle_endpoint(self, e_state: EndpointState, is_recent: bool = True, from_pkt: Optional[str] = None):
         """Extracted status packet parsing, handles mqtt publishing and device state changes."""
-        _id = raw_state[0]
-        # for children, we need sub_id to compare to device.children
-        device = g.ncync_server.devices.get(_id)
-        if device is None:
+        node_id = e_state.node_id
+        node = g.ncync_server.devices.get(node_id)
+        if node is None:
             logger.warning(
-                f"Device ID: {_id} not found in devices! device may be disabled in config file or you need to "
+                f"Device ID: {node_id} not found in devices! device may be disabled in config file or you need to "
                 f"re-export your Cync account devices!"
             )
             return
-        state = raw_state[1]
-        brightness = raw_state[2]
-        temp = raw_state[3]
-        r = raw_state[4]
-        _g = raw_state[5]
-        b = raw_state[6]
-        connected_to_mesh = 1
-        # check if len is enough for good byte, it is optional
-        if len(raw_state) > 7:
-            # The last byte seems to indicate if the device is online or offline (connected to mesh / powered on)
-            connected_to_mesh = raw_state[7]
+        power = e_state.power
+        brightness = e_state.brightness
+        temp = e_state.temperature
+        r = e_state.red
+        _g = e_state.green
+        b = e_state.blue
 
-        if connected_to_mesh == 0:
-            # This usually happens when a device loses power/connection.
-            # this device is gone, need to mark it offline.
-            # FIXME: sometimes its a false report.
-            if device.online:
-                device.online = False
-                logger.warning(
-                    f'{self.lp} Device ID: {_id} ("{device.name}") seems to have been removed from the BTLE '
-                    f"mesh (lost power/connection), setting offline..."
-                )
-        else:
-            device.online = True
-            # create a status with existing data, change along the way for publishing over mqtt
-            device.status = new_state = DeviceStatus(
-                state=device.state,
-                brightness=device.brightness,
-                temperature=device.temperature,
-                red=device.red,
-                green=device.green,
-                blue=device.blue,
-            )
-            # temp is 0-100, if > 100, RGB data has been sent, otherwise its on/off, brightness or temp data
-            # technically 129 = effect in use, 254 = rgb data
-            #  to signify 'effect' mode: we send rgb 0,0,0 (black) as it stands out
-            rgb_data = False
-            if temp > 100:
-                rgb_data = True
-            curr_status = device.current_status
-            if curr_status == [state, brightness, temp, r, _g, b]:
-                (
-                    logger.debug(f"{device.lp} NO CHANGES TO DEVICE STATUS")
-                    if CYNC_RAW is True
-                    else None
-                )
-            await g.mqtt_client.parse_device_status(
-                device.id, new_state, from_pkt=from_pkt, sub_id=sub_id
-            )
-            device.state = state
-            device.brightness = brightness
-            device.temperature = temp
-            if rgb_data is True:
-                device.red = r
-                device.green = _g
-                device.blue = b
-            g.ncync_server.devices[device.id] = device
+        if not is_recent:
+            # when the TCP device replies to a mesh info request, it dumps its own current state and then what it knows about other devices.
+            # there is a byte in those states, that seems to mean (I havent received state data for this BTLE device recently).
+            # At first, I interpreted it as the device losing mains power or network because I noticed it from devices that had happened to.
+            # Using that byte as master online/offline results in false positives, Therefore:
+            # todo: this does not signify online/offline, but being offline/online can set this byte.
+            logger.info(f"{node.lp} '{e_state.name}' seems to have stale state data: {e_state}") if node.metadata.supported else None
+            # if node.online:
+            #     node.online = False
+            #     logger.warning(
+            #         f'{self.lp} Device ID: {node_id} ("{node.name}") hasnt sent any comms for a bit '
+            #         f", setting offline..."
+            #     )
+        node.online = True
+        # if node.has_state_changed(e_state) is False:
+        #     (
+        #         logger.debug(f"{node.lp} NO CHANGES TO DEVICE STATUS")
+        #         if CYNC_RAW is True
+        #         else None
+        #     )
+        node.endpoints[e_state.id] = e_state
+        await g.mqtt_client.parse_endpoint_state(e_state, from_pkt=from_pkt)
+        g.ncync_server.devices[node.id] = node
 
     async def start(self):
         lp = f"{self.lp}start:"
@@ -231,8 +202,6 @@ class nCyncServer:
             )
             self.running = True
             try:
-                # "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
-                # TODO: publish the server running status
                 if g.mqtt_client:
                     await g.mqtt_client.publish(
                         f"{g.env.mqtt_topic}/status/bridge/tcp_server/running",
@@ -281,7 +250,6 @@ class nCyncServer:
                     logger.debug(f"{lp} shutting down NOW...")
                     self._server.close()
                     await self._server.wait_closed()
-                    # TODO: publish the server running status
                     if g.mqtt_client:
                         await g.mqtt_client.publish(
                             f"{g.env.mqtt_topic}/status/bridge/tcp_server/running",

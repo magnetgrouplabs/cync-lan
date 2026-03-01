@@ -22,6 +22,7 @@ from cync_lan.metadata.model_info import (
     DeviceTypeInfo,
     device_type_map,
     DeviceClassification,
+    PARENT_NODE_TYPES,
 )
 from cync_lan.structs import (
     GlobalObject,
@@ -39,18 +40,25 @@ from cync_lan.structs import (
 )
 from cync_lan.utils import parse_unbound_firmware_version, bytes2list
 
-__all__ = ["CyncDevice", "CyncTCPDevice"]
+__all__ = ["CyncNode", "CyncTCPDevice"]
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
 
 
-class CyncDevice:
+class CyncEndpoint:
+    lp = "CyncEndpoint:"
+    id: int
+    node_id: int
+    state: EndpointState
+
+
+
+class CyncNode:
     """
-    A class to represent a Cync device imported from a config file. This class is used to manage the state of the device
-    and send commands to it by using its device ID defined when the device was added to your Cync account.
+    A class to represent the physical Cync device as a bridge/controller
     """
 
-    lp = "CyncDevice:"
+    lp = "CyncNode:"
     id: int = None
     type: Optional[int] = None
     _supports_rgb: Optional[bool] = None
@@ -65,50 +73,48 @@ class CyncDevice:
     hvac: Optional[dict] = None
     _online: bool = False
     metadata: Optional[DeviceTypeInfo] = None
+    endpoints: Optional[Dict[int, EndpointState]]
 
     def __init__(
             self,
-            cync_id: int,
-            cync_type: Optional[int] = None,
+            node_id: int,
+            dev_type: Optional[int] = None,
             name: Optional[str] = None,
             mac: Optional[str] = None,
             wifi_mac: Optional[str] = None,
             fw_version: Optional[str] = None,
             home_id: Optional[int] = None,
             hvac: Optional[dict] = None,
-            children: Optional[Dict[int, str]] = None,
+            endpoints: Optional[Dict[int, EndpointState]] = None,
     ):
         self.control_bytes = bytes([0x00, 0x00])
-        if cync_id is None:
+        if node_id is None:
             raise ValueError("ID must be provided to constructor")
-        self.id = cync_id
-        self.children: Optional[Dict[int, str]] = children
-        self.type = cync_type
+        self.id = node_id
+        self.endpoints = endpoints
+        self.type = dev_type
         self.metadata = (
-            device_type_map[self.type] if cync_type in device_type_map else None
+            device_type_map[self.type] if dev_type in device_type_map else None
         )
         self.home_id: Optional[int] = home_id
-        self.hass_id: str = f"{home_id}-{cync_id}"
         self._mac = mac
         self.wifi_mac = wifi_mac
         self._version: Optional[str] = None
         self.version = fw_version
         if name is None:
-            name = f"device_{cync_id}"
+            name = f"device_{node_id}"
         self.name = name
-        self.lp = f"CyncDevice:{self.name}({cync_id}):"
+        self.lp = f"{self.lp}{self.name}({node_id}):"
         self._status: DeviceStatus = DeviceStatus()
         self._mesh_alive_byte: Union[int, str] = 0x00
         self.endpoints: Dict[int, EndpointState] = {}
-        if self.children:
-            for c_id, c_name in self.children.items():
-                self.endpoints[c_id] = EndpointState(sub_id=c_id, name=c_name)
-        else:
-            self.endpoints[0] = EndpointState(sub_id=0, name=self.name)
-
         if hvac is not None:
             self.hvac = hvac
             self._is_hvac = True
+
+    @property
+    def hass_id(self):
+        return f"{self.home_id}-{self.id}"
 
     @property
     def is_hvac(self) -> bool:
@@ -226,8 +232,8 @@ class CyncDevice:
         self._is_plug = value
 
     @property
-    def has_children(self) -> bool:
-        return bool(self.children)
+    def has_multi_endpoints(self) -> bool:
+        return len(self.endpoints) > 1
 
     @property
     def is_fan_controller(self):
@@ -304,7 +310,6 @@ class CyncDevice:
             a 0x83 internal status packet, which we use to change HASS device state.
         """
         lp = f"{self.lp}set_power:"
-        logger.debug(f"DBG>>> SUB-ID? --> {sub_id = }")
         if state not in (0, 1):
             logger.error(f"{lp} Invalid state! must be 0 or 1")
             return
@@ -363,7 +368,7 @@ class CyncDevice:
                     msg_id=cmsg_id,
                     message=payload_bytes,
                     sent_at=time.time(),
-                    callback=partial(g.mqtt_client.update_device_state, self, state, sub_id),
+                    callback=partial(g.mqtt_client.update_endpoint_power, self, state, sub_id),
                 )
                 bridge_device.messages.control[cmsg_id] = m_cb
                 sent[bridge_device.address] = cmsg_id
@@ -376,7 +381,7 @@ class CyncDevice:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
         logger.debug(
-            f"{lp} Sent power state command, current: {self.state} - new: {state} to "
+            f"{lp} Sent power state command for: {self.name} ({self.id}{'/{}'.format(sub_id) if sub_id is not None else ''}), current: {self.state} - new: {state} to "
             f"TCP devices: {sent} in {elapsed:.5f} seconds"
         )
 
@@ -854,6 +859,11 @@ class CyncDevice:
                 )
             )
 
+    def has_state_changed(self, ep_state: EndpointState):
+        curr = self.endpoints[ep_state.id]
+        return curr != ep_state
+
+
     @property
     def current_status(self) -> List[int]:
         """
@@ -862,7 +872,7 @@ class CyncDevice:
         """
         ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
         return [
-            ep.state,
+            ep.power,
             ep.brightness,
             ep.temperature,
             ep.red,
@@ -881,8 +891,13 @@ class CyncDevice:
 
     @property
     def state(self):
-        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
-        return ep.state
+        # Lazy evaluation: Only runs next() if get(0) returns None.
+        # The 'None' inside next() prevents StopIteration crashes.
+        ep = self.endpoints.get(0) or next(iter(self.endpoints.values()), None)
+        if not ep:
+            return 0
+        # Note: using ep.power based on your new EndpointState class
+        return ep.power
 
     @state.setter
     def state(self, value: Union[int, bool, str]):
@@ -908,9 +923,13 @@ class CyncDevice:
         else:
             raise ValueError(f"Invalid value for state: {value}")
 
-        ep = self.endpoints.get(0, next(iter(self.endpoints.values())))
-        if value != ep.state:
-            ep.state = value
+        ep = self.endpoints.get(0) or next(iter(self.endpoints.values()), None)
+        if not ep:
+            logger.error(f"{self.lp} Cannot set state, self.endpoints is empty!")
+            return
+
+        if value != ep.power:
+            ep.power = value
 
     @property
     def brightness(self):
@@ -1506,28 +1525,6 @@ class CyncTCPDevice:
                                     # fa db 13 is internal status
                                     # device internal status. state can be off and brightness set to a non 0.
                                     # signifies what brightness when state = on, meaning don't rely on brightness for on/off.
-
-                                    # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
-                                    #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
-                                    #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
-                                    id_idx = 14
-                                    connected_idx = 19
-                                    state_idx = 20
-                                    bri_idx = 21
-                                    tmp_idx = 22
-                                    r_idx = 23
-                                    g_idx = 24
-                                    b_idx = 25
-                                    dev_id = packet_data[id_idx]
-                                    state = packet_data[state_idx]
-                                    bri = packet_data[bri_idx]
-                                    tmp = packet_data[tmp_idx]
-                                    _red = packet_data[r_idx]
-                                    _green = packet_data[g_idx]
-                                    _blue = packet_data[b_idx]
-                                    connected_to_mesh = packet_data[connected_idx]
-                                    ___dev = g.ncync_server.devices.get(dev_id)
-
                                     _dbg_msg = ""
                                     # if CYNC_RAW is True:
                                     _dbg_msg = (
@@ -1535,48 +1532,75 @@ class CyncTCPDevice:
                                         f"PACKET HEADER: {packet_header.hex(' ')}\nHEX: {packet_data[1:-1].hex(' ')}\nINT: {bytes2list(packet_data[1:-1])}"
                                     )
 
-                                    if ___dev:
-                                        if ___dev.has_children:
-                                            # For multi-endpoint devices, brightness acts as the bitmask
-                                            for c_id in ___dev.children.keys():
-                                                bit_shift = c_id - 1
-                                                child_state = 1 if (bri & (1 << bit_shift)) else 0
-
-                                                dev_name = f'"{___dev.name}" (ID: {dev_id}) [sub ID: {c_id}]'
-                                                raw_status = bytes([dev_id, child_state, 0, tmp, _red, _green, _blue,
-                                                                    connected_to_mesh])
-
-                                                logger.debug(
-                                                    f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
-                                                await g.ncync_server.parse_status(raw_status, from_pkt="0x83",
-                                                                                  sub_id=c_id)
+                                    # 83 00 00 00 25 37 96 24 69 00 05 00 7e {21 00 00
+                                    #  00} {[fa db] 13} 00 (34 22) 11 05 00 [05] 00 db
+                                    #  11 02 01 [00 64 00 00 00 00] 00 00 b3 7e
+                                    id_idx = 14
+                                    not_stale_idx = 19
+                                    state_idx = 20
+                                    bri_idx = 21
+                                    tmp_idx = 22
+                                    r_idx = 23
+                                    g_idx = 24
+                                    b_idx = 25
+                                    dev_id = packet_data[id_idx]
+                                    power = packet_data[state_idx]
+                                    bri = packet_data[bri_idx]
+                                    tmp = packet_data[tmp_idx]
+                                    _red = packet_data[r_idx]
+                                    _green = packet_data[g_idx]
+                                    _blue = packet_data[b_idx]
+                                    recently_seen = packet_data[not_stale_idx]
+                                    node_repr: CyncNode = g.ncync_server.devices.get(dev_id)
+                                    if node_repr:
+                                        dev_name = node_repr.name
+                                        # todo: refactor this to be dynamic?
+                                        if node_repr.type in PARENT_NODE_TYPES:
+                                            if node_repr.type == 67:
+                                                # bri byte is a bitmask for on/off state of endpoints
+                                                # since we know the state of up to 8 endpoints at once, parse them all
+                                                for e_state_ in node_repr.endpoints.values():
+                                                    bit_shift = e_state_.id - 1
+                                                    e_state_.power = 1 if (bri & (1 << bit_shift)) else 0
+                                                    dev_name = f"'{node_repr.name} - {e_state_.name}' (ID: {dev_id}/{e_state_.id})"
+                                                    logger.debug(
+                                                        f"{lp} Internal STATUS for {e_state_}{_dbg_msg}")
+                                                    await g.ncync_server.handle_endpoint(e_state_, from_pkt="0x83")
                                         else:
                                             # Standard single endpoint
-                                            dev_name = f'"{___dev.name}" (ID: {dev_id})'
-                                            raw_status = bytes(
-                                                [dev_id, state, bri, tmp, _red, _green, _blue, connected_to_mesh])
-
+                                            dev_name = f"'{node_repr.name}' (ID: {dev_id})"
+                                            e_state = EndpointState(
+                                                name=node_repr.name,
+                                                node_id=dev_id,
+                                                power=power,
+                                                brightness=bri,
+                                                temperature=tmp,
+                                                red=_red,
+                                                green=_green,
+                                                blue=_blue,
+                                            )
                                             logger.debug(
-                                                f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
-                                            await g.ncync_server.parse_status(raw_status, from_pkt="0x83", sub_id=0)
+                                                f"{lp} Internal STATUS for {dev_name} = {e_state}{_dbg_msg}")
+                                            await g.ncync_server.handle_endpoint(e_state, recently_seen,
+                                                                                 from_pkt="0x83")
+
                                     else:
-                                        # Unknown device fallback
-                                        dev_name = f"Device ID: {dev_id}"
-                                        raw_status = bytes(
-                                            [dev_id, state, bri, tmp, _red, _green, _blue, connected_to_mesh])
-                                        logger.debug(
-                                            f"{lp} Internal STATUS for {dev_name} = {bytes2list(raw_status)}{_dbg_msg}")
-                                        await g.ncync_server.parse_status(raw_status, from_pkt="0x83", sub_id=0)
+                                        # Unknown/disbaled/unsupported device?
+                                        logger.warning(f"{lp} Received internal STATUS for unknown device: {dev_id}"
+                                                       f" -> p={power} b={bri} t={tmp} | r={_red} g={_green} b={_blue}")
+
                                     # logger.debug(f"DBG>>> {bytes2list(packet_data[9:12]) = } // {bytes2list(packet_data[9:12]) == [17, 17, 17] = }")
                                     # LED controller has this pattern
                                     bad_chksum_msg = ""
                                     if bytes2list(packet_data[9:12]) == [17, 17, 17]:
-                                        # LED controller sends its internal state in a stream
-                                        # Only the first packet in the stream has the correct checksum.
+                                        # LED controller sends its internal state in a stream of 0x83 packets.
+                                        # Only the first packet in the stream has the correct checksum. Check other bytes for correct checksums?
                                         # All following 0x83 internal status packets for this stream will have the same checksum as the first packet.
                                         # As soon as we get an internal status without the first packets calculated checksum, we know that series is
-                                        # done sending and it will just send regular status packets, my guess is this is a bug or an identifier that
-                                        # the packet belongs to the stream
+                                        # done sending and it will just send regular status packets, my guess is this is the OG TELink chips had small RAM
+                                        # and saved memory by sending whole mesh info at once with only dynamic bytes (pwr, bri, tmp, rgb) modified
+                                        # where the LED controller uses RTL80(10|20CM) and can instead send synamic data about each device in the BTLE mesh
+                                        # meaning the TELink only stored upto X node states, while the RTL can handle more/all, so they switched to a stream
                                         bad_chksum_msg = (
                                             f"{lp} Checksum mismatch, calculated: {calc_chksum} "
                                             f"// received: {checksum}"
@@ -1587,7 +1611,7 @@ class CyncTCPDevice:
                                             if calc_chksum != checksum:
                                                 bad_chksum_msg = (
                                                     f"{lp} Checksum mismatch in INITIAL STATUS STREAM - FIRST packet data, "
-                                                    f"calculated: {calc_chksum} // received: {checksum}"
+                                                    f"calculated: {calc_chksum} // received: {checksum} -- open an issue on github"
                                                 )
 
                                         else:
@@ -1604,6 +1628,7 @@ class CyncTCPDevice:
                                                     self.first_83_packet_checksum
                                                 )
                                             else:
+                                                # assuming stream has ended.
                                                 self.first_83_packet_checksum = None
 
                                     if calc_chksum != checksum:
@@ -1787,10 +1812,10 @@ class CyncTCPDevice:
                                                 _raw_m.append(mesh_dev_struct.hex(" "))
                                                 if dev_id in g.ncync_server.devices:
                                                     # first device id is the device id of the TCP device we are connected to
-                                                    ___dev = g.ncync_server.devices[
+                                                    node_repr = g.ncync_server.devices[
                                                         dev_id
                                                     ]
-                                                    dev_name = ___dev.name
+                                                    dev_name = node_repr.name
                                                     if loop_num == 1:
                                                         # byte 3 (idx 2) is a device type byte but,
                                                         # it only reports on the first item (itself)

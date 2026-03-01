@@ -23,8 +23,8 @@ from cync_lan.const import (
     CYNC_LOG_NAME,
     CYNC_EXPORT_SOURCE,
 )
-from cync_lan.devices import CyncDevice
-from cync_lan.structs import GlobalObject, ComputedTokenData
+from cync_lan.devices import CyncNode
+from cync_lan.structs import GlobalObject, ComputedTokenData, EndpointState
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
@@ -404,7 +404,7 @@ class CyncCloudAPI:
             }
             new_cfg[raw_home["name"]] = new_home
             new_home["devices"] = {}
-            sub_dev_reg = {}
+            entity_reg = {}
             for raw_device in raw_home["properties"]["bulbsArray"]:
                 if any(
                     checkattr not in raw_device
@@ -421,16 +421,13 @@ class CyncCloudAPI:
                         f"{lp} Missing required attribute (ID, Name, Type, MACs, Version) in Cync device, skipping: {raw_device}"
                     )
                     continue
-                new_device = {}
+                new_device: dict = {}
                 wifi_mac = str(raw_device["wifiMac"])
                 bt_mac = str(raw_device["mac"])
                 dev_name = str(raw_device["displayName"])
                 dev_type = int(raw_device["deviceType"])
                 fw_ver = str(raw_device["firmwareVersion"])
                 # switchID ? maybe links them in their logic?
-                # YAML will cast a string to an int if it is not quoted and is only digits: 123456 will
-                # be cast to an int, "123456" will be a str. since the deviceID is unquoted str of digits, it is
-                # cast to an int. Recast back to a str.
                 raw_id = str(raw_device["deviceID"])
                 home_id = raw_id[:9]
                 raw_dev = raw_id.split(home_id)[1]
@@ -441,51 +438,30 @@ class CyncCloudAPI:
                     # firmwareVersion = Unknown is also an identifier for sub-devices
                     # sub-device wifiMac will always be 01:02:03:04:05:06 even if parent has WiFi, BT MACs match
                     sub_id = int(raw_dev[:3])
-                    if dev_id in new_home["devices"]:
-                        parent = new_home["devices"][dev_id]
-                        if "children" not in parent:
-                            # first sub-device
-                            parent["children"] = {}
-                        else:
-                            # children already populated
-                            pass
-                        # 'children': { 001: 'fireplace lights', 002: 'fence lights' }
-                        if sub_id in parent["children"]:
+                    if dev_id in entity_reg:
+                        if sub_id in entity_reg[dev_id]:
                             logger.error(
-                                f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled..."
+                                f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home "
+                                f"'{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug "
+                                f"logs enabled..."
                             )
                             continue
-                        else:
-                            logger.info(
-                                f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent ({dev_id})"
-                            )
-                            parent["children"][sub_id] = dev_name
-                            continue
+                    logger.info(
+                        f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in "
+                        f"home '{raw_home['name']}' devices registry"
+                    )
+                    state = EndpointState(
+                        node_id = dev_id,
+                        id = sub_id,
+                        name = dev_name
+                    )
+                    if dev_id in entity_reg:
+                        entity_reg[dev_id][sub_id] = state
                     else:
-                        logger.warning(
-                            f"{lp} Sub-device ({sub_id}) named: '{dev_name}' has parent device ID {dev_id} which was not found in the same home '{raw_home['name']}' devices list, staging sub-device in registry..."
-                        )
-
-                        if dev_id in sub_dev_reg:
-                            # another child already populated, check for dupe then add
-                            if sub_id in sub_dev_reg[dev_id]:
-                                logger.error(
-                                    f"{lp} Duplicate sub-device ID {sub_id} found for parent device ID {dev_id} in home '{raw_home['name']}' (device name: '{dev_name}'), Please open an issue with debug logs enabled..."
-                                )
-                            else:
-                                logger.info(
-                                    f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in home '{raw_home['name']}' devices registry until parent device is parsed"
-                                )
-                                sub_dev_reg[dev_id][sub_id] = dev_name
-                            continue
-                        else:
-                            logger.info(
-                                f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in home '{raw_home['name']}' devices registry until parent device is parsed"
-                            )
-                            sub_dev_reg[dev_id] = {sub_id: dev_name}
-                            continue
+                        entity_reg[dev_id] = {sub_id: state}
+                    continue
                 # END OF SUB DEVICE PARSING
-                # data from: https://github.com/baudneo/cync-lan/issues/8
+
                 # { "hvacSystem": { "changeoverMode": 0, "auxHeatStages": 1, "auxFurnaceType": 1, "stages": 1, "furnaceType": 1, "type": 2, "powerLines": 1 },
                 # "thermostatSensors": [ { "pin": "025572", "name": "Living Room", "type": "savant" }, { "pin": "044604", "name": "Bedroom Sensor", "type": "savant" }, { "pin": "022724", "name": "Thermostat sensor 3", "type": "savant" } ] } ]
                 # todo: thermostat device logic whenever someone gets me debug data
@@ -498,11 +474,10 @@ class CyncCloudAPI:
                         f"{lp} Found HVAC device '{dev_name}' (ID: {dev_id}): {hvac_cfg}"
                     )
                     new_device["hvac"] = hvac_cfg
-                # this cync device is only instantiated to pull a couple of properties from: is_plug, supports_*
-                cync_device = CyncDevice(
+                cync_device = CyncNode(
                     name=dev_name,
-                    cync_id=dev_id,
-                    cync_type=dev_type,
+                    node_id=dev_id,
+                    dev_type=dev_type,
                     mac=bt_mac,
                     wifi_mac=wifi_mac,
                     fw_version=fw_ver,
@@ -516,28 +491,20 @@ class CyncCloudAPI:
                 new_device["fw"] = fw_ver
                 new_device["mac"] = bt_mac
                 new_device["wifi_mac"] = wifi_mac
+                # give it the default 0, if it has children, we will overwrite the 0
+                new_device["endpoints"] = {0: name}
                 del cync_device
-                # if we made it this far, were a parent device, check sub-dev registry
-                if dev_id in sub_dev_reg:
-                    logger.info(
-                        f"{lp} Found {len(sub_dev_reg[dev_id])} staged sub-device(s) for parent device ID {dev_id} in home '{raw_home['name']}' devices registry, adding them to the parent device's children list"
-                    )
-                    if "children" not in new_device:
-                        new_device["children"] = sub_dev_reg.pop(dev_id)
-                    else:
-                        # this should never happen since we check for existing children when we stage sub-devices, but just in case
-                        logger.error(
-                            f"{lp} Parent device ID {dev_id} in home '{raw_home['name']}' already has a 'children' key when trying to add staged sub-devices from registry, this should never happen, please open an issue with debug logs enabled..."
-                        )
-                        continue
-                else:
-                    logger.debug(f"{lp} No staged sub-devices found for parent device ID {dev_id} in home '{raw_home['name']}' devices registry")
-                # add device to 'home' config
                 new_home["devices"][dev_id] = new_device
 
-        # out of parsing loop, if a device with children is processed before the children
-
-        # write raw exported config to file for debugging, only if export source is not configured as a file
+            # END OF DEVICE PARSING LOOP
+            # check sub dev reg
+            if entity_reg:
+                for node_id, endpoint_data in entity_reg.items():
+                    if node_id in new_home['devices']:
+                        # overwrite the default 0 endpoint with the children
+                        new_home['devices'][node_id]["endpoints"] = endpoint_data
+        # END OF HOME PARSING LOOP
+        # write raw exported config to file for debugging, only if export source is None
         if CYNC_EXPORT_SOURCE is None:
             if CYNC_OVERWRITE_CONFIG_FILE is False:
                 # basic numbered suffix logic to prevent overwriting existing files

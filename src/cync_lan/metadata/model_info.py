@@ -1,9 +1,10 @@
 from enum import StrEnum
-from typing import Annotated, Optional, Union
+from typing import Annotated, Optional, Union, List
 
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 
+PARENT_NODE_TYPES = [67]
 
 class DeviceClassification(StrEnum):
     LIGHT = "light"
@@ -54,6 +55,7 @@ class DeviceTypeInfo:
     capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
     characteristics: Optional[LightCharacteristics] = None
     supported: bool = Field(default=True, description="Whether this device type is supported")
+    notes: Optional[List[str]] = None
 
     @property
     def model_string(self) -> str:
@@ -352,6 +354,12 @@ device_type_map = {
         model_id="CPLGOD2BLG1",
         protocol=DeviceProtocol(TCP=True, MATTER=True),
         capabilities=SwitchCapabilities(plug=True),
+        notes=[
+            "when reading the 0x83 internal state, bri byte is the bitmask, use -> & (1 << (sub_id - 1))",
+            "temp can sometimes be 255, unknown what it means",
+            "power byte is 1 if either outlet on, 0 if either off",
+            "sending a command is easy, has a dedicated byte for sub-id directly after the device-id byte"
+        ]
     ),
     68: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,

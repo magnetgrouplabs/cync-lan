@@ -455,13 +455,49 @@ class FanSpeed(StrEnum):
     MAX = "max"
 
 class EndpointState(BaseModel):
-    """Holds the individual state for a specific endpoint (outlet, bulb, etc.)"""
-    sub_id: int
+    """
+    Holds the individual state for a specific endpoint (outlet, bulb, etc.).
+    Endpoint is the logical device. Node is the physical device (TCP/BTLE conn).
+
+    Args:
+        name (str): The name of the endpoint.
+        node_id (int): The node ID of the endpoint.
+        id (int, optional): The sub ID of the endpoint. Defaults to 0.
+        power (int, optional): The power state of the endpoint. Defaults to 0.
+        brightness (int, optional): The brightness state of the endpoint. Defaults to 0.
+        temperature (int, optional): the temperature state of the endpoint. Defaults to 0.
+        red (int, optional): the red state of the endpoint. Defaults to 0.
+        green (int, optional): the green state of the endpoint. Defaults to 0.
+        blue (int, optional): the blue state of the endpoint. Defaults to 0.
+    """
     name: str
-    online: bool = False
-    state: int = 0
-    brightness: Optional[int] = None
+    node_id: int
+    id: int = 0
+    power: int = 0
+    brightness: int = 0
     temperature: int = 0
     red: int = 0
     green: int = 0
     blue: int = 0
+
+    # pydantic BaseModel has this baked in
+    # def __eq__(self, other):
+    #     if isinstance(other, EndpointState):
+    #         return (
+    #             self.node_id == other.node_id and
+    #             self.id == other.id and
+    #             self.power == other.power and
+    #             self.brightness == other.brightness and
+    #             self.temperature == other.temperature and
+    #             self.red == other.red and
+    #             self.green == other.green and
+    #             self.blue == other.blue
+    #         )
+    #     return False
+
+    def __str__(self):
+        return (f"{self.name} ({self.node_id}/{self.id}): p={self.power} b={self.brightness} t={self.temperature} "
+                f"r={self.red} g={self.green} b={self.blue}")
+
+    def __repr__(self):
+        return self.__str__()

@@ -11,8 +11,6 @@ RUN set -x \
         -keyout '/root/cync-lan/certs/key.pem' -out '/root/cync-lan/certs/cert.pem' \
         -subj '/CN=*.xlink.cn' -sha256 -days 3650 -nodes
 
-WORKDIR /tmp/cync-src
-COPY ./ .
 
 # Install dependencies and the local package, then immediately nuke the source files
 RUN set -x \
@@ -23,8 +21,12 @@ RUN set -x \
         "aiohttp>=3.10.8" \
         "fastapi>=0.115.12" \
         "uvicorn>=0.34.3" \
-        "tzlocal>=5.3.1" \
-        . \
+        "tzlocal>=5.3.1"
+
+WORKDIR /tmp/cync-src
+COPY ./ .
+RUN set -x \
+    && pip install . \
     && rm -rf /tmp/cync-src
 
 COPY static/ /root/cync-lan/www/
