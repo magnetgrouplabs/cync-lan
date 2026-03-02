@@ -129,16 +129,17 @@ CYNC_RAW = os.environ.get("CYNC_RAW_DEBUG", "0").casefold() in YES_ANSWER
 CYNC_DEBUG = os.environ.get("CYNC_DEBUG", "0").casefold() in YES_ANSWER
 
 CYNC_BASE_DIR: str = os.environ.get("CYNC_BASE_DIR", "/root/cync-lan")
-CYNC_STATIC_DIR: str = f"{CYNC_BASE_DIR}/www"
-CYNC_CONFIG_DIR: str = os.environ.get("CYNC_CONFIG_DIR", "/config")
+CYNC_STATIC_DIR: str = os.environ.get("CYNC_STATIC_DIR", f"{CYNC_BASE_DIR}/www")
+CYNC_CFGAPPEND_DIR: str = os.environ.get("CYNC_CFGAPPEND_DIR", "/config")
 CYNC_OVERWRITE_CONFIG_FILE: bool = (
     os.environ.get("CYNC_OVERWRITE_CONFIG_FILE", "0").casefold() in YES_ANSWER
 )
-if CYNC_CONFIG_DIR is not None and CYNC_CONFIG_DIR:
-    if not CYNC_CONFIG_DIR.startswith("/"):
-        CYNC_CONFIG_DIR = f"/{CYNC_CONFIG_DIR}"
+if CYNC_CFGAPPEND_DIR is not None and CYNC_CFGAPPEND_DIR:
+    if not CYNC_CFGAPPEND_DIR.startswith("/"):
+        CYNC_CFGAPPEND_DIR = f"/{CYNC_CFGAPPEND_DIR}"
 
-CYNC_CONFIG_DIR = f"{CYNC_BASE_DIR}{CYNC_CONFIG_DIR}"
+CYNC_CONFIG_DIR = os.environ.get("CYNC_CONFIG_DIR", f"{CYNC_BASE_DIR}{CYNC_CFGAPPEND_DIR}")
+logger.debug(F"DBG>>> {CYNC_CONFIG_DIR=} || {CYNC_BASE_DIR=}")
 
 CYNC_CONFIG_FILE_PATH: str = f"{CYNC_CONFIG_DIR}/cync_mesh.yaml"
 CYNC_UUID_PATH: str = f"{CYNC_CONFIG_DIR}/uuid.txt"
