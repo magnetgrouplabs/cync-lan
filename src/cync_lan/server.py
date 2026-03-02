@@ -41,9 +41,9 @@ class nCyncServer:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, devices: Dict[int, CyncNode]):
-        self.devices: Dict[int, CyncNode] = devices
-        logger.debug(f"\n\nnCyncServer.__init__() DBG>>> {self.devices[46].endpoints = }")
+    def __init__(self, node_map: Dict[int, CyncNode]):
+        self.devices: Dict[int, CyncNode] = node_map
+        logger.debug(f"\n\nnCyncServer.__init__() WHAT THE FUCK!?!?!? DBG>>> {self.devices[46].name = } /// {self.devices[46].endpoints = }")
         logger.debug(f"\n\nnCyncServer.__init__() DBG>>> {self.devices[45].endpoints = }\n\n")
 
         self.tcp_conn_attempts: dict = {}

@@ -18,7 +18,7 @@ from cync_lan.const import (
     YES_ANSWER,
     LOCAL_TZ,
 )
-from cync_lan.structs import GlobalObject
+from cync_lan.structs import GlobalObject, EndpointState
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
@@ -205,7 +205,7 @@ async def parse_config(cfg_file: Path):
                         f"{lp} Device '{device_name}' (ID: {cync_id}) is disabled in config, skipping..."
                     )
                     continue
-            endpoints = None
+            raw_endpoints = None
             fw_version = (
                 cync_device["fw"] if "fw" in cync_device and cync_device["fw"] else None
             )
@@ -233,11 +233,19 @@ async def parse_config(cfg_file: Path):
                             f"IMPORTANT>>> cync device '{device_name}' (ID: {cync_id}) 'wifi_mac' is somehow an int -> "
                             f"{wmac}, please quote the mac address to force it to a string in the config file"
                         )
-            if "endpoints" in cync_device and (endpoints := cync_device["endpoints"]) and (num_ends := len(endpoints)) > 1:
-                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has {num_ends} endpoints: {endpoints}")
-            logger.debug(f"\n\n\nDBG>>> {endpoints = }")
+            endpoints = {}
+            if "endpoints" in cync_device and (raw_endpoints := cync_device["endpoints"]) and (num_ends := len(raw_endpoints)) > 1:
+                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has {num_ends} endpoints: {raw_endpoints}")
             # DBG>>> endpoints = {1: 'Outlet 1 L', 2: 'Outlet 2 R'}
-            # fixme, need to convert to EndpointState and send { ep_state.id: ep_state }
+            if raw_endpoints:
+                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has endpoints: {raw_endpoints}, PARSING THEM")
+                for ep_id, ep_name in raw_endpoints.items():
+                    endpoints[ep_id] = EndpointState(
+                        node_id=cync_id,
+                        id = ep_id,
+                        name=ep_name
+                    )
+
             nodes[cync_id] = CyncNode(
                 name=device_name,
                 node_id=cync_id,
@@ -248,7 +256,10 @@ async def parse_config(cfg_file: Path):
                 dev_type=dev_type,
                 endpoints=endpoints,
             )
+            logger.debug(f"\n\n\nDBG>>>{device_name} ({cync_id}) {raw_endpoints = } /// {endpoints = } /// {nodes[cync_id].endpoints = }")
 
+    logger.debug(f"About to return the node dict from parse_config: {nodes}")
+    logger.debug(f"About to return the node dict from parse_config: {nodes[46].endpoints = }")
     return nodes
 
 

@@ -468,7 +468,7 @@ class MQTTClient:
             device_uuid = f"{device.home_id}-{device_id}"
             data = []
             if device.has_multi_endpoints:
-                for child_id, child_name in device.entities.items():
+                for child_id, child_name in device.endpoints.items():
                     data.append((f"{self.topic}/availability/{device_uuid}-{child_id}", availability))
             else:
                 data.append((f"{self.topic}/availability/{device_uuid}", availability))
@@ -489,7 +489,7 @@ class MQTTClient:
         node.online = True
         _id = sub_id if sub_id is not None else 0
         logger.debug(f"DBG>>> {node.endpoints = }")
-        endpoint = node.endpoints.get(_id, node.endpoints[0])
+        endpoint = node.endpoints.get(_id)
         endpoint.power = state
         power_status = "OFF" if state == 0 else "ON"
         mqtt_tgt_state = {"state": power_status}
@@ -503,7 +503,7 @@ class MQTTClient:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         node.online = True
         _id = sub_id if sub_id is not None else 0
-        endpoint = node.endpoints.get(_id, node.endpoints[0])
+        endpoint = node.endpoints.get(_id)
         endpoint.brightness = bri
         state = "ON"
         if bri == 0:
@@ -517,7 +517,7 @@ class MQTTClient:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
         node.online = True
         _id = sub_id if sub_id is not None else 0
-        endpoint = node.endpoints.get(_id, node.endpoints[0])
+        endpoint = node.endpoints.get(_id)
 
         if node.supports_temperature:
             mqtt_dev_state = {
@@ -538,7 +538,7 @@ class MQTTClient:
         """Update the device RGB and publish to MQTT for HASS devices to update. Intended for callbacks"""
         node.online = True
         _id = sub_id if sub_id is not None else 0
-        endpoint = node.endpoints.get(_id, node.endpoints[0])
+        endpoint = node.endpoints.get(_id)
 
         if node.supports_rgb and (
                 any(

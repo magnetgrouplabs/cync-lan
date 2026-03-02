@@ -73,7 +73,7 @@ class CyncNode:
     hvac: Optional[dict] = None
     _online: bool = False
     metadata: Optional[DeviceTypeInfo] = None
-    endpoints: Optional[Dict[int, EndpointState]]
+    endpoints: Optional[Dict[int, EndpointState]] = None
 
     def __init__(
             self,
@@ -92,6 +92,7 @@ class CyncNode:
             raise ValueError("ID must be provided to constructor")
         self.id = node_id
         self.endpoints = endpoints
+        logger.debug(f"DBG>>> CyncNode init(), {endpoints = }")
         self.type = dev_type
         self.metadata = (
             device_type_map[self.type] if dev_type in device_type_map else None
@@ -107,7 +108,6 @@ class CyncNode:
         self.lp = f"{self.lp}{self.name}({node_id}):"
         self._status: DeviceStatus = DeviceStatus()
         self._mesh_alive_byte: Union[int, str] = 0x00
-        self.endpoints: Dict[int, EndpointState] = {}
         if hvac is not None:
             self.hvac = hvac
             self._is_hvac = True
@@ -509,7 +509,7 @@ class CyncNode:
             await asyncio.gather(*tasks)
         elapsed = time.time() - ts
         logger.debug(
-            f"{lp} Sent brightness command, current: {self._brightness} new: {bri} to TCP devices: {sent} in {elapsed:.5f} seconds"
+            f"{lp} Sent brightness command, current: {self.brightness} new: {bri} to TCP devices: {sent} in {elapsed:.5f} seconds"
         )
 
     async def set_temperature(self, temp: int, sub_id: Optional[int] = None):

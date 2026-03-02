@@ -98,7 +98,9 @@ class CyncLAN:
         tasks = []
 
         if cfg_file.exists():
-            g.ncync_server = nCyncServer(await parse_config(cfg_file))
+            node_dict = await parse_config(cfg_file)
+            logger.debug(f"immediately after getting the nodes from parsing config: {node_dict[46].endpoints = }")
+            g.ncync_server = nCyncServer(node_dict)
             g.mqtt_client = MQTTClient()
             g.ncync_server.start_task = n_start = asyncio.Task(
                 g.mqtt_client.start(), name=MQTT_CLIENT_START_TASK_NAME
