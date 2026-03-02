@@ -409,15 +409,6 @@ class RawTokenData(BaseModel):
     """
     Model for cloud token data.
     """
-
-    # API Auth Response:
-    # {
-    # 'access_token': '1007d2ad150c4000-2407d4d081dbea53DAwQjkzNUM2RDE4QjE0QTIzMjNGRjAwRUU4ODNEQUE5RTFCMjhBOQ==',
-    # 'refresh_token': 'REY3NjVENEQwQTM4NjE2OEM3QjNGMUZEQjQyQzU0MEIzRTU4NzMyRDdFQzZFRUYyQTUxNzE4RjAwNTVDQ0Y3Mw==',
-    # 'user_id': 769963474,
-    # 'expire_in': 604800,
-    # 'authorize': '2207d2c8d2c9e406'
-    # }
     access_token: str
     user_id: Union[str, int]
     expire_in: Union[str, int]
