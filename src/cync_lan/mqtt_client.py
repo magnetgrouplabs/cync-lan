@@ -251,7 +251,7 @@ class MQTTClient:
                                 f"devices recently?"
                             )
                             continue
-                        node = g.ncync_server.devices[device_id]
+                        node: CyncNode = g.ncync_server.devices[device_id]
                     extra_data = _topic[3:] if len(_topic) > 3 else None
                     # bridge or fan, extra data
                     if extra_data:
@@ -376,7 +376,9 @@ class MQTTClient:
                         if pattern.match(str_payload):
                             # handle non-JSON payloads
                             if str_payload.casefold() == "on":
-                                logger.debug(f"{lp} setting power to ON (non-JSON)")
+                                logger.debug(
+                                    f"{lp} setting power to ON (non-JSON) for: {node.id}{' [sub ID: {}]'.format(sub_id) if sub_id else ''}"
+                                )
 
                                 tasks.append(node.set_power(1, sub_id))
                             elif str_payload.casefold() == "off":
@@ -588,7 +590,7 @@ class MQTTClient:
         if self._connected:
             tgt_id = f"{node.hass_id}" if not sub_id else f"{node.hass_id}-{sub_id}"
             logger.debug(
-                f"{lp} Sending {msg} for device: '{node.name}' (ID: {node.id}){' \'{}\' [sub ID: {}]'.format(node.endpoints[sub_id].name, sub_id) if sub_id else ''}"
+                f"{lp} Sending {msg} for device: '{node.name}' (ID: {node.id}){" '{}' [sub ID: {}]".format(node.endpoints[sub_id].name, sub_id) if sub_id else ''}"
             )
             tpc = f"{self.topic}/status/{tgt_id}"
             try:
