@@ -1916,11 +1916,10 @@ class CyncTCPDevice:
 
                                                 else:
                                                     # Unknown
-                                                    if node_repr.metadata.supported:
-                                                        logger.warning(
-                                                            f"{lp} Received internal STATUS for unknown device: {dev_id}"
-                                                            f" -> p={power} b={bri} t={tmp} | r={_red} g={_green} b={_blue}"
-                                                        )
+                                                    logger.warning(
+                                                        f"{lp} Received internal STATUS for unknown device  ID: "
+                                                        f"{dev_id} -> You probably need to export a new config file"
+                                                    )
                                             # -- END OF mesh info response parsing loop --
 
                                         except IndexError:
