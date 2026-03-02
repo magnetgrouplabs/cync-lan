@@ -9,18 +9,18 @@ from typing import Optional
 import aiohttp
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cync_lan.const import (
+    CYNC_CONFIG_FILE_PATH,
     CYNC_EXPORT_HOST,
     CYNC_EXPORT_PORT,
-    CYNC_CONFIG_FILE_PATH,
-    CYNC_STATIC_DIR,
-    CYNC_LOG_NAME,
     CYNC_EXPORT_SOURCE,
+    CYNC_LOG_NAME,
+    CYNC_STATIC_DIR,
 )
 from cync_lan.structs import GlobalObject
 

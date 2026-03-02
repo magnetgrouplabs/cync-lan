@@ -7,20 +7,20 @@ import os
 import time
 from argparse import Namespace
 from enum import StrEnum
-from typing import Union, Optional, List, Coroutine, Dict, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Coroutine, Dict, List, Optional, Tuple, Union
 
 import uvloop
 from pydantic import BaseModel, ConfigDict, computed_field
 from pydantic.dataclasses import dataclass
 
-from cync_lan.const import YES_ANSWER, CYNC_LOG_NAME
+from cync_lan.const import CYNC_LOG_NAME, YES_ANSWER
 
 if TYPE_CHECKING:
+    from cync_lan.cloud_api import CyncCloudAPI
     from cync_lan.exporter import ExportServer
+    from cync_lan.main import CyncLAN
     from cync_lan.mqtt_client import MQTTClient
     from cync_lan.server import nCyncServer
-    from cync_lan.cloud_api import CyncCloudAPI
-    from cync_lan.main import CyncLAN
 
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -53,12 +53,12 @@ class GlobalObjEnv(BaseModel):
 
 
 class GlobalObject:
-    cync_lan: Optional[CyncLAN] = None
-    ncync_server: Optional[nCyncServer] = None
-    mqtt_client: Optional[MQTTClient] = None
+    cync_lan: Optional["CyncLAN"] = None
+    ncync_server: Optional["nCyncServer"] = None
+    mqtt_client: Optional["MQTTClient"] = None
     loop: Union[uvloop.Loop, asyncio.AbstractEventLoop, None] = None
-    export_server: Optional[ExportServer] = None
-    cloud_api: Optional[CyncCloudAPI] = None
+    export_server: Optional["ExportServer"] = None
+    cloud_api: Optional["CyncCloudAPI"] = None
     tasks: List[asyncio.Task] = []
     env: GlobalObjEnv = GlobalObjEnv()
     uuid: Optional[uuid.UUID] = None
@@ -454,6 +454,7 @@ class FanSpeed(StrEnum):
     HIGH = "high"
     MAX = "max"
 
+
 class EndpointState(BaseModel):
     """
     Holds the individual state for a specific endpoint (outlet, bulb, etc.).
@@ -470,6 +471,7 @@ class EndpointState(BaseModel):
         green (int, optional): the green state of the endpoint. Defaults to 0.
         blue (int, optional): the blue state of the endpoint. Defaults to 0.
     """
+
     name: str
     node_id: int
     id: int = 0
@@ -496,8 +498,10 @@ class EndpointState(BaseModel):
     #     return False
 
     def __str__(self):
-        return (f"{self.name} ({self.node_id}/{self.id}): p={self.power} b={self.brightness} t={self.temperature} "
-                f"r={self.red} g={self.green} b={self.blue}")
+        return (
+            f"{self.name} ({self.node_id}/{self.id}): p={self.power} b={self.brightness} t={self.temperature} "
+            f"r={self.red} g={self.green} b={self.blue}"
+        )
 
     def __repr__(self):
         return self.__str__()

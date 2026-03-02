@@ -5,9 +5,9 @@ from typing import Dict, Optional, Union
 
 import uvloop
 
-from cync_lan.const import CYNC_SRV_PORT, CYNC_SRV_HOST, CYNC_RAW, CYNC_LOG_NAME
+from cync_lan.const import CYNC_LOG_NAME, CYNC_SRV_HOST, CYNC_SRV_PORT
 from cync_lan.devices import CyncNode, CyncTCPDevice
-from cync_lan.structs import GlobalObject, DeviceStatus, EndpointState
+from cync_lan.structs import EndpointState, GlobalObject
 
 __all__ = [
     "nCyncServer",
@@ -43,9 +43,6 @@ class nCyncServer:
 
     def __init__(self, node_map: Dict[int, CyncNode]):
         self.devices: Dict[int, CyncNode] = node_map
-        logger.debug(f"\n\nnCyncServer.__init__() WHAT THE FUCK!?!?!? DBG>>> {self.devices[46].name = } /// {self.devices[46].endpoints = }")
-        logger.debug(f"\n\nnCyncServer.__init__() DBG>>> {self.devices[45].endpoints = }\n\n")
-
         self.tcp_conn_attempts: dict = {}
         self.ssl_context: Optional[ssl.SSLContext] = None
         self.host: str = CYNC_SRV_HOST
@@ -135,7 +132,12 @@ class nCyncServer:
         ssl_context.set_ciphers(":".join(ciphers))
         return ssl_context
 
-    async def handle_endpoint(self, e_state: EndpointState, is_recent: bool = True, from_pkt: Optional[str] = None):
+    async def handle_endpoint(
+        self,
+        e_state: EndpointState,
+        is_recent: bool = True,
+        from_pkt: Optional[str] = None,
+    ):
         """Extracted status packet parsing, handles mqtt publishing and device state changes."""
         node_id = e_state.node_id
         node = g.ncync_server.devices.get(node_id)
@@ -158,7 +160,9 @@ class nCyncServer:
             # At first, I interpreted it as the device losing mains power or network because I noticed it from devices that had happened to.
             # Using that byte as master online/offline results in false positives, Therefore:
             # todo: this does not signify online/offline, but being offline/online can set this byte.
-            logger.info(f"{node.lp} '{e_state.name}' seems to have stale state data: {e_state}") if node.metadata.supported else None
+            logger.info(
+                f"{node.lp} '{e_state.name}' seems to have stale state data: {e_state}"
+            ) if node.metadata.supported else None
             # if node.online:
             #     node.online = False
             #     logger.warning(

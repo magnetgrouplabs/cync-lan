@@ -7,18 +7,18 @@ import struct
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 import yaml
 
 from cync_lan.const import (
+    CYNC_CONFIG_DIR,
     CYNC_LOG_NAME,
     CYNC_UUID_PATH,
-    CYNC_CONFIG_DIR,
-    YES_ANSWER,
     LOCAL_TZ,
+    YES_ANSWER,
 )
-from cync_lan.structs import GlobalObject, EndpointState
+from cync_lan.structs import EndpointState, GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
@@ -234,16 +234,18 @@ async def parse_config(cfg_file: Path):
                             f"{wmac}, please quote the mac address to force it to a string in the config file"
                         )
             endpoints = {}
-            if "endpoints" in cync_device and (raw_endpoints := cync_device["endpoints"]) and (num_ends := len(raw_endpoints)) > 1:
-                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has {num_ends} endpoints: {raw_endpoints}")
-            # DBG>>> endpoints = {1: 'Outlet 1 L', 2: 'Outlet 2 R'}
+            if (
+                "endpoints" in cync_device
+                and (raw_endpoints := cync_device["endpoints"])
+                and (num_ends := len(raw_endpoints)) > 1
+            ):
+                logger.debug(
+                    f"{lp} Device '{device_name}' (ID: {cync_id}) has {num_ends} endpoints: {raw_endpoints}"
+                )
             if raw_endpoints:
-                logger.debug(f"{lp} Device '{device_name}' (ID: {cync_id}) has endpoints: {raw_endpoints}, PARSING THEM")
                 for ep_id, ep_name in raw_endpoints.items():
                     endpoints[ep_id] = EndpointState(
-                        node_id=cync_id,
-                        id = ep_id,
-                        name=ep_name
+                        node_id=cync_id, id=ep_id, name=ep_name
                     )
 
             nodes[cync_id] = CyncNode(
@@ -256,10 +258,7 @@ async def parse_config(cfg_file: Path):
                 dev_type=dev_type,
                 endpoints=endpoints,
             )
-            logger.debug(f"\n\n\nDBG>>>{device_name} ({cync_id}) {raw_endpoints = } /// {endpoints = } /// {nodes[cync_id].endpoints = }")
 
-    logger.debug(f"About to return the node dict from parse_config: {nodes}")
-    logger.debug(f"About to return the node dict from parse_config: {nodes[46].endpoints = }")
     return nodes
 
 

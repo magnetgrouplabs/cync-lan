@@ -1,10 +1,11 @@
 from enum import StrEnum
-from typing import Annotated, Optional, Union, List
+from typing import Annotated, List, Optional, Union
 
-from pydantic.dataclasses import dataclass
 from pydantic import Field
+from pydantic.dataclasses import dataclass
 
-PARENT_NODE_TYPES = [67]
+MULTI_ENDPOINT_TYPES = [67]
+
 
 class DeviceClassification(StrEnum):
     LIGHT = "light"
@@ -54,7 +55,9 @@ class DeviceTypeInfo:
     protocol: DeviceProtocol = Field(default_factory=DeviceProtocol)
     capabilities: Union[LightCapabilities, SwitchCapabilities, None] = None
     characteristics: Optional[LightCharacteristics] = None
-    supported: bool = Field(default=True, description="Whether this device type is supported")
+    supported: bool = Field(
+        default=True, description="Whether this device type is supported"
+    )
     notes: Optional[List[str]] = None
 
     @property
@@ -71,7 +74,10 @@ class DeviceTypeInfo:
                         add_str += " "
                     add_str += f"{self.characteristics.lumens} lum"
                 if self.characteristics.min_kelvin:
-                    if self.characteristics.min_kelvin and self.characteristics.max_kelvin:
+                    if (
+                        self.characteristics.min_kelvin
+                        and self.characteristics.max_kelvin
+                    ):
                         kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
                     else:
                         kelvin_data = f"{self.characteristics.min_kelvin}K"
@@ -280,7 +286,7 @@ device_type_map = {
     ),
     47: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
-        model_name="Reveal Full Color 6\" Recessed Downlight",
+        model_name='Reveal Full Color 6" Recessed Downlight',
         model_info="CFIXRSCR6CRVD",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(color=True, tunable_white=True),
@@ -358,8 +364,8 @@ device_type_map = {
             "when reading the 0x83 internal state, bri byte is the bitmask, use -> & (1 << (sub_id - 1))",
             "temp can sometimes be 255, unknown what it means",
             "power byte is 1 if either outlet on, 0 if either off",
-            "sending a command is easy, has a dedicated byte for sub-id directly after the device-id byte"
-        ]
+            "sending a command is easy, has a dedicated byte for sub-id directly after the device-id byte",
+        ],
     ),
     68: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
@@ -413,7 +419,7 @@ device_type_map = {
         type=DeviceClassification.SWITCH,
         model_name="Wire-Free Dimmer with White Temperature Switch (BTLE only)",
         capabilities=SwitchCapabilities(dimmable=True),
-        supported=False
+        supported=False,
     ),
     129: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,

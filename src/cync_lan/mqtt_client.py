@@ -4,35 +4,35 @@ import logging
 import random
 import re
 from json import JSONDecodeError
-from typing import Optional, Union, List, Coroutine, Dict
+from typing import Coroutine, Dict, List, Optional, Union
 
 import aiomqtt
 
 from cync_lan.const import (
-    CYNC_MINK,
-    CYNC_MAXK,
-    ORIGIN_STRUCT,
+    CYNC_BRIDGE_DEVICE_REGISTRY_CONF,
     CYNC_BRIDGE_OBJ_ID,
-    CYNC_VERSION,
-    FACTORY_EFFECTS_BYTES,
-    CYNC_MANUFACTURER,
-    CYNC_HASS_WILL_MSG,
     CYNC_HASS_BIRTH_MSG,
-    CYNC_HASS_TOPIC,
     CYNC_HASS_STATUS_TOPIC,
-    DEVICE_LWT_MSG,
+    CYNC_HASS_TOPIC,
+    CYNC_HASS_WILL_MSG,
+    CYNC_LOG_NAME,
+    CYNC_MANUFACTURER,
+    CYNC_MAXK,
+    CYNC_MINK,
     CYNC_MQTT_CONN_DELAY,
     CYNC_MQTT_HOST,
+    CYNC_MQTT_PASS,
     CYNC_MQTT_PORT,
     CYNC_MQTT_USER,
-    CYNC_MQTT_PASS,
-    CYNC_BRIDGE_DEVICE_REGISTRY_CONF,
     CYNC_TOPIC,
-    CYNC_LOG_NAME,
+    CYNC_VERSION,
+    DEVICE_LWT_MSG,
+    FACTORY_EFFECTS_BYTES,
+    ORIGIN_STRUCT,
 )
 from cync_lan.devices import CyncNode
 from cync_lan.metadata.model_info import device_type_map
-from cync_lan.structs import DeviceStatus, GlobalObject, FanSpeed, EndpointState
+from cync_lan.structs import EndpointState, FanSpeed, GlobalObject
 from cync_lan.utils import send_sigterm
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -354,7 +354,8 @@ class MQTTClient:
                         if "color_temp" in json_data:
                             tasks.append(
                                 node.set_temperature(
-                                    self.kelvin2cync(int(json_data["color_temp"])), sub_id
+                                    self.kelvin2cync(int(json_data["color_temp"])),
+                                    sub_id,
                                 )
                             )
                         elif "color" in json_data:
@@ -469,26 +470,30 @@ class MQTTClient:
             data = []
             if device.has_multi_endpoints:
                 for child_id, child_name in device.endpoints.items():
-                    data.append((f"{self.topic}/availability/{device_uuid}-{child_id}", availability))
+                    data.append(
+                        (
+                            f"{self.topic}/availability/{device_uuid}-{child_id}",
+                            availability,
+                        )
+                    )
             else:
                 data.append((f"{self.topic}/availability/{device_uuid}", availability))
             # logger.debug(f"{lp} Publishing availability: {availability}")
             for _d in data:
                 try:
-                    _ = await self.client.publish(
-                        _d[0], _d[1], qos=0
-                    )
+                    _ = await self.client.publish(_d[0], _d[1], qos=0)
                 except aiomqtt.MqttError as mqtt_code_exc:
                     logger.warning(f"{lp} [MqttError] -> {mqtt_code_exc}")
                     self._connected = False
             return True
         return False
 
-    async def update_endpoint_power(self, node: CyncNode, state: int, sub_id: Optional[int] = None) -> bool:
+    async def update_endpoint_power(
+        self, node: CyncNode, state: int, sub_id: Optional[int] = None
+    ) -> bool:
         """Update the device state and publish to MQTT for HASS devices to update."""
         node.online = True
         _id = sub_id if sub_id is not None else 0
-        logger.debug(f"DBG>>> {node.endpoints = }")
         endpoint = node.endpoints.get(_id)
         endpoint.power = state
         power_status = "OFF" if state == 0 else "ON"
@@ -499,7 +504,9 @@ class MQTTClient:
             mqtt_tgt_state = json.dumps(mqtt_tgt_state).encode()  # send JSON
         return await self.pub_endpoint_state(node, mqtt_tgt_state, sub_id)
 
-    async def update_brightness(self, node: CyncNode, bri: int, sub_id: Optional[int] = None) -> bool:
+    async def update_brightness(
+        self, node: CyncNode, bri: int, sub_id: Optional[int] = None
+    ) -> bool:
         """Update the device brightness and publish to MQTT for HASS devices to update."""
         node.online = True
         _id = sub_id if sub_id is not None else 0
@@ -513,7 +520,9 @@ class MQTTClient:
             node, json.dumps(mqtt_dev_state).encode(), sub_id
         )
 
-    async def update_temperature(self, node: CyncNode, temp: int, sub_id: Optional[int] = None) -> bool:
+    async def update_temperature(
+        self, node: CyncNode, temp: int, sub_id: Optional[int] = None
+    ) -> bool:
         """Update the device temperature and publish to MQTT for HASS devices to update."""
         node.online = True
         _id = sub_id if sub_id is not None else 0
@@ -534,20 +543,22 @@ class MQTTClient:
             )
         return False
 
-    async def update_rgb(self, node: CyncNode, rgb: tuple[int, int, int], sub_id: Optional[int] = None) -> bool:
+    async def update_rgb(
+        self, node: CyncNode, rgb: tuple[int, int, int], sub_id: Optional[int] = None
+    ) -> bool:
         """Update the device RGB and publish to MQTT for HASS devices to update. Intended for callbacks"""
         node.online = True
         _id = sub_id if sub_id is not None else 0
         endpoint = node.endpoints.get(_id)
 
         if node.supports_rgb and (
-                any(
-                    [
-                        rgb[0] is not None,
-                        rgb[1] is not None,
-                        rgb[2] is not None,
-                    ]
-                )
+            any(
+                [
+                    rgb[0] is not None,
+                    rgb[1] is not None,
+                    rgb[2] is not None,
+                ]
+            )
         ):
             mqtt_tgt_state = {
                 "state": "ON",
@@ -564,7 +575,11 @@ class MQTTClient:
         return False
 
     async def pub_endpoint_state(
-        self, node: CyncNode, msg: bytes, sub_id: Optional[int], from_pkt: Optional[str] = None,
+        self,
+        node: CyncNode,
+        msg: bytes,
+        sub_id: Optional[int],
+        from_pkt: Optional[str] = None,
     ) -> bool:
 
         lp = f"{self.lp}device_status:"
@@ -573,7 +588,7 @@ class MQTTClient:
         if self._connected:
             tgt_id = f"{node.hass_id}" if not sub_id else f"{node.hass_id}-{sub_id}"
             logger.debug(
-                f"{lp} Sending {msg} for device: '{node.name}' (ID: {node.id}){' [sub ID: {}]'.format(sub_id) if sub_id else ''}"
+                f"{lp} Sending {msg} for device: '{node.name}' (ID: {node.id}){' \'{}\' [sub ID: {}]'.format(node.endpoints[sub_id].name, sub_id) if sub_id else ''}"
             )
             tpc = f"{self.topic}/status/{tgt_id}"
             try:
@@ -593,7 +608,9 @@ class MQTTClient:
         return False
 
     async def parse_endpoint_state(
-            self, endpoint_state: EndpointState, from_pkt: Optional[str] = None,
+        self,
+        endpoint_state: EndpointState,
+        from_pkt: Optional[str] = None,
     ) -> bool:
         """Parse device status and publish to MQTT for HASS devices to update."""
         lp = f"{self.lp}parse state:"
@@ -623,14 +640,14 @@ class MQTTClient:
 
             if endpoint.temperature is not None:
                 if node.supports_rgb and (
-                        any(
-                            [
-                                endpoint.red is not None,
-                                endpoint.green is not None,
-                                endpoint.blue is not None,
-                            ]
-                        )
-                        and endpoint.temperature == 254
+                    any(
+                        [
+                            endpoint.red is not None,
+                            endpoint.green is not None,
+                            endpoint.blue is not None,
+                        ]
+                    )
+                    and endpoint.temperature == 254
                 ):
                     mqtt_dev_state["color_mode"] = "rgb"
                     mqtt_dev_state["color"] = {
@@ -638,16 +655,16 @@ class MQTTClient:
                         "g": endpoint.green,
                         "b": endpoint.blue,
                     }
-                elif node.supports_temperature and (
-                        0 <= endpoint.temperature <= 100
-                ):
+                elif node.supports_temperature and (0 <= endpoint.temperature <= 100):
                     mqtt_dev_state["color_mode"] = "color_temp"
                     mqtt_dev_state["color_temp"] = self.cync2kelvin(
                         endpoint.temperature
                     )
             mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
 
-        return await self.pub_endpoint_state(node, mqtt_dev_state, sub_id, from_pkt=from_pkt)
+        return await self.pub_endpoint_state(
+            node, mqtt_dev_state, sub_id, from_pkt=from_pkt
+        )
 
     async def send_birth_msg(self) -> bool:
         lp = f"{self.lp}send_birth_msg:"
@@ -694,7 +711,9 @@ class MQTTClient:
                 return True
         return False
 
-    async def _publish_entity(self, device: CyncNode, registry_struct: dict, entity_uuid: str):
+    async def _publish_entity(
+        self, device: CyncNode, registry_struct: dict, entity_uuid: str
+    ):
         tpc_str_template = "{0}/{1}/{2}/config"
         dev_type = "light"
         if device.is_light:
@@ -708,26 +727,18 @@ class MQTTClient:
             registry_struct.update({"brightness_scale": 100})
             if device.supports_temperature or device.supports_rgb:
                 if device.supports_temperature:
-                    registry_struct["supported_color_modes"].append(
-                        "color_temp"
-                    )
+                    registry_struct["supported_color_modes"].append("color_temp")
                     registry_struct["color_temp_kelvin"] = True
                     registry_struct["min_kelvin"] = CYNC_MINK
                     registry_struct["max_kelvin"] = CYNC_MAXK
                 if device.supports_rgb:
-                    registry_struct["supported_color_modes"].append(
-                        "rgb"
-                    )
+                    registry_struct["supported_color_modes"].append("rgb")
                     registry_struct["effect"] = True
-                    registry_struct["effect_list"] = list(
-                        FACTORY_EFFECTS_BYTES.keys()
-                    )
+                    registry_struct["effect_list"] = list(FACTORY_EFFECTS_BYTES.keys())
                 # add brightness : True only when supported_color_modes are present
                 registry_struct.update({"brightness": True})
             if not registry_struct["supported_color_modes"]:
-                registry_struct["supported_color_modes"].append(
-                    "brightness"
-                )
+                registry_struct["supported_color_modes"].append("brightness")
 
         elif dev_type == "fan":
             registry_struct["platform"] = "fan"
@@ -745,11 +756,11 @@ class MQTTClient:
                 "high",
                 "max",
             ]
-            registry_struct["preset_mode_command_topic"] = (
-                "{0}/set/{1}/preset".format(self.topic, entity_uuid)
+            registry_struct["preset_mode_command_topic"] = "{0}/set/{1}/preset".format(
+                self.topic, entity_uuid
             )
-            registry_struct["preset_mode_state_topic"] = (
-                "{0}/status/{1}/preset".format(self.topic, entity_uuid)
+            registry_struct["preset_mode_state_topic"] = "{0}/status/{1}/preset".format(
+                self.topic, entity_uuid
             )
 
         tpc = tpc_str_template.format(self.ha_topic, dev_type, entity_uuid)
@@ -763,8 +774,7 @@ class MQTTClient:
 
         except Exception as e:
             logger.error(
-                "%s - Unable to publish mqtt message... skipped -> %s"
-                % (lp, e)
+                "%s - Unable to publish mqtt message... skipped -> %s" % (lp, e)
             )
 
     async def homeassistant_discovery(self) -> bool:
@@ -817,7 +827,9 @@ class MQTTClient:
                         "name": None,
                         "command_topic": "{0}/set/{1}".format(self.topic, device_uuid),
                         "state_topic": "{0}/status/{1}".format(self.topic, device_uuid),
-                        "avty_t": "{0}/availability/{1}".format(self.topic, device_uuid),
+                        "avty_t": "{0}/availability/{1}".format(
+                            self.topic, device_uuid
+                        ),
                         "pl_avail": "online",
                         "pl_not_avail": "offline",
                         "state_on": "ON",
@@ -832,21 +844,36 @@ class MQTTClient:
                     if node.has_multi_endpoints:
                         logger.debug(
                             f"{lp} Device '{node.name}' (ID: {node.id}) has {len(node.endpoints)} endpoints, creating "
-                            f"separate HASS entities for each endpoint...")
+                            f"separate HASS entities for each endpoint..."
+                        )
                         for ep_id, ep_state in node.endpoints.items():
                             cobj_id = f"cync_lan_{unique_id}_{ep_id}"
-                            cdevice_uuid = f"{node.hass_id}-{ep_id}" # home_id-device_id-ep_id
-                            entity_registry_struct["command_topic"] = "{0}/set/{1}".format(self.topic, cdevice_uuid)
-                            entity_registry_struct["state_topic"] = "{0}/status/{1}".format(self.topic, cdevice_uuid)
-                            entity_registry_struct["avty_t"] = "{0}/availability/{1}".format(self.topic, cdevice_uuid)
+                            cdevice_uuid = (
+                                f"{node.hass_id}-{ep_id}"  # home_id-device_id-ep_id
+                            )
+                            entity_registry_struct["command_topic"] = (
+                                "{0}/set/{1}".format(self.topic, cdevice_uuid)
+                            )
+                            entity_registry_struct["state_topic"] = (
+                                "{0}/status/{1}".format(self.topic, cdevice_uuid)
+                            )
+                            entity_registry_struct["avty_t"] = (
+                                "{0}/availability/{1}".format(self.topic, cdevice_uuid)
+                            )
                             entity_registry_struct["object_id"] = cobj_id
                             entity_registry_struct["default_entity_id"] = cobj_id
                             entity_registry_struct["name"] = ep_state.name
-                            entity_registry_struct["unique_id"] = f"{node.home_id}_{node.id}_{ep_id}"
-                            await self._publish_entity(node, entity_registry_struct, cdevice_uuid)
+                            entity_registry_struct["unique_id"] = (
+                                f"{node.home_id}_{node.id}_{ep_id}"
+                            )
+                            await self._publish_entity(
+                                node, entity_registry_struct, cdevice_uuid
+                            )
                     else:
                         # single entity for a single device with no children
-                        await self._publish_entity(node, entity_registry_struct, device_uuid)
+                        await self._publish_entity(
+                            node, entity_registry_struct, device_uuid
+                        )
 
             except aiomqtt.MqttCodeError as mqtt_code_exc:
                 logger.warning(

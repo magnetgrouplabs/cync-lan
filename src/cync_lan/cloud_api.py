@@ -11,20 +11,20 @@ import aiohttp
 import yaml
 
 from cync_lan.const import (
-    CYNC_OVERWRITE_CONFIG_FILE,
+    CYNC_ACCOUNT_LANGUAGE,
+    CYNC_ACCOUNT_PASSWORD,
+    CYNC_ACCOUNT_USERNAME,
+    CYNC_API_BASE,
+    CYNC_CLOUD_AUTH_PATH,
     CYNC_CONFIG_DIR,
     CYNC_CONFIG_FILE_PATH,
     CYNC_CORP_ID,
-    CYNC_ACCOUNT_USERNAME,
-    CYNC_ACCOUNT_PASSWORD,
-    CYNC_ACCOUNT_LANGUAGE,
-    CYNC_API_BASE,
-    CYNC_CLOUD_AUTH_PATH,
-    CYNC_LOG_NAME,
     CYNC_EXPORT_SOURCE,
+    CYNC_LOG_NAME,
+    CYNC_OVERWRITE_CONFIG_FILE,
 )
 from cync_lan.devices import CyncNode
-from cync_lan.structs import GlobalObject, ComputedTokenData, EndpointState
+from cync_lan.structs import ComputedTokenData, EndpointState, GlobalObject
 
 logger = logging.getLogger(CYNC_LOG_NAME)
 g = GlobalObject()
@@ -320,24 +320,34 @@ class CyncCloudAPI:
     async def export_config_file(self) -> bool:
         """Get Cync devices from the cloud"""
         if CYNC_EXPORT_SOURCE is not None:
-            logger.warning(f"{self.lp} The source for export has been configured as a file: {CYNC_EXPORT_SOURCE} "
-                           f"skipping cloud export and using the provided file instead...")
+            logger.warning(
+                f"{self.lp} The source for export has been configured as a file: {CYNC_EXPORT_SOURCE} "
+                f"skipping cloud export and using the provided file instead..."
+            )
             src_file = Path(CYNC_EXPORT_SOURCE)
             if not src_file.exists():
-                logger.error(f"{self.lp} The provided export source file does not exist: {CYNC_EXPORT_SOURCE}")
+                logger.error(
+                    f"{self.lp} The provided export source file does not exist: {CYNC_EXPORT_SOURCE}"
+                )
                 return False
             elif not src_file.is_file():
-                logger.error(f"{self.lp} The provided export source path is not a file: {CYNC_EXPORT_SOURCE}")
+                logger.error(
+                    f"{self.lp} The provided export source path is not a file: {CYNC_EXPORT_SOURCE}"
+                )
                 return False
             else:
                 try:
                     with src_file.open("r") as f:
                         exported_data = yaml.safe_load(f)
                 except Exception as file_exc:
-                    logger.error(f"{self.lp} Failed to read export source file: {CYNC_EXPORT_SOURCE} -> {file_exc}")
+                    logger.error(
+                        f"{self.lp} Failed to read export source file: {CYNC_EXPORT_SOURCE} -> {file_exc}"
+                    )
                     return False
                 else:
-                    logger.debug(f"{self.lp} Successfully read export source file: {CYNC_EXPORT_SOURCE}")
+                    logger.debug(
+                        f"{self.lp} Successfully read export source file: {CYNC_EXPORT_SOURCE}"
+                    )
         else:
             # use the cloud
             exported_data = await self.request_device_data()
@@ -450,11 +460,7 @@ class CyncCloudAPI:
                         f"{lp} Staging sub-device ({sub_id}) named: '{dev_name}' with parent device ID {dev_id} in "
                         f"home '{raw_home['name']}' devices registry"
                     )
-                    state = EndpointState(
-                        node_id = dev_id,
-                        id = sub_id,
-                        name = dev_name
-                    )
+                    state = EndpointState(node_id=dev_id, id=sub_id, name=dev_name)
                     if dev_id in entity_reg:
                         entity_reg[dev_id][sub_id] = state
                     else:
@@ -500,9 +506,9 @@ class CyncCloudAPI:
             # check sub dev reg
             if entity_reg:
                 for node_id, endpoint_data in entity_reg.items():
-                    if node_id in new_home['devices']:
+                    if node_id in new_home["devices"]:
                         # overwrite the default 0 endpoint with the children
-                        new_home['devices'][node_id]["endpoints"] = endpoint_data
+                        new_home["devices"][node_id]["endpoints"] = endpoint_data
         # END OF HOME PARSING LOOP
         # write raw exported config to file for debugging, only if export source is None
         if CYNC_EXPORT_SOURCE is None:

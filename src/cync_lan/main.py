@@ -11,27 +11,27 @@ import uvloop
 
 from cync_lan.cloud_api import CyncCloudAPI
 from cync_lan.const import (
-    CYNC_LOG_NAME,
-    CYNC_VERSION,
     CYNC_CONFIG_FILE_PATH,
-    EXPORT_SRV_START_TASK_NAME,
-    MQTT_CLIENT_START_TASK_NAME,
-    nCYNC_START_TASK_NAME,
-    LOG_FORMATTER,
-    FOREIGN_LOG_FORMATTER,
     CYNC_DEBUG,
     CYNC_ENABLE_EXPORTER,
+    CYNC_LOG_NAME,
+    CYNC_VERSION,
+    EXPORT_SRV_START_TASK_NAME,
+    FOREIGN_LOG_FORMATTER,
+    LOG_FORMATTER,
+    MQTT_CLIENT_START_TASK_NAME,
+    nCYNC_START_TASK_NAME,
 )
 from cync_lan.exporter import ExportServer
 from cync_lan.mqtt_client import MQTTClient
 from cync_lan.server import nCyncServer
 from cync_lan.structs import GlobalObject
 from cync_lan.utils import (
-    signal_handler,
-    parse_config,
-    check_python_version,
     check_for_uuid,
+    check_python_version,
+    parse_config,
     send_sigterm,
+    signal_handler,
 )
 
 logger = logging.getLogger(CYNC_LOG_NAME)
@@ -82,9 +82,7 @@ class CyncLAN:
     def __init__(self):
         lp = f"{self.lp}init:"
         check_for_uuid()
-        logger.debug(
-            f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing..."
-        )
+        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing...")
 
     async def start(self):
         """Start the Cync LAN server, MQTT client, and Export server."""
@@ -99,7 +97,6 @@ class CyncLAN:
 
         if cfg_file.exists():
             node_dict = await parse_config(cfg_file)
-            logger.debug(f"immediately after getting the nodes from parsing config: {node_dict[46].endpoints = }")
             g.ncync_server = nCyncServer(node_dict)
             g.mqtt_client = MQTTClient()
             g.ncync_server.start_task = n_start = asyncio.Task(
