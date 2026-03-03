@@ -116,6 +116,12 @@ device_type_map = {
         model_id=None,
         capabilities=LightCapabilities(tunable_white=True, color=True),
     ),
+    9: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Soft White Light A19 Bulb",
+        model_id=None,
+        capabilities=LightCapabilities(tunable_white=True),
+    ),
     10: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White Light (Unknown)",
@@ -304,6 +310,13 @@ device_type_map = {
         model_id="CSWDMOCBWF1",
         protocol=DeviceProtocol(TCP=True),
         capabilities=SwitchCapabilities(dimmable=True),
+    ),
+    51: DeviceTypeInfo(
+        type=DeviceClassification.SWITCH,
+        model_name="Switch",
+        model_id=None,
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=SwitchCapabilities()
     ),
     52: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
