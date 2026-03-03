@@ -13,6 +13,8 @@ This project is bundled as a docker image, you can build it locally or pull imag
 #### Upgrading
 - Rebuild the image
 
+---
+
 ### Pull
 - Copy the example [`docker-compose.yaml`](../docker/docker-compose.yaml) file
 - Set up env vars using the docker-compose `environment` section or uncomment the `env_file` option and create an .env file (See [example](../docker/example.env))
