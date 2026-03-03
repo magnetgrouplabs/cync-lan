@@ -31,6 +31,7 @@ class LightCapabilities:
     dynamic: bool = False
     color: bool = False
     colour: Annotated[bool, Field(alias="color")] = False
+    dynamic: bool = False
 
 
 @dataclass
@@ -45,6 +46,7 @@ class LightCharacteristics:
     min_kelvin: Optional[Annotated[int, Field(ge=2000, le=7000)]] = None
     max_kelvin: Optional[Annotated[int, Field(ge=2000, le=7000)]] = None
     lumens: Optional[Annotated[int, Field(ge=10)]] = None
+    cri: Optional[Annotated[int, Field(ge=5, le=100)]] = None
 
 
 @dataclass
@@ -75,10 +77,13 @@ class DeviceTypeInfo:
                     add_str += f"{self.characteristics.lumens} lum"
                 if self.characteristics.min_kelvin:
                     if (
-                        self.characteristics.min_kelvin
-                        and self.characteristics.max_kelvin
+                        (self.characteristics.min_kelvin
+                        and self.characteristics.max_kelvin)
                     ):
-                        kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
+                        if self.characteristics.min_kelvin != self.characteristics.max_kelvin:
+                            kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
+                        else:
+                            kelvin_data = f"{self.characteristics.min_kelvin}K"
                     else:
                         kelvin_data = f"{self.characteristics.min_kelvin}K"
                     if add_str:
@@ -118,9 +123,10 @@ device_type_map = {
     ),
     9: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
-        model_name="Soft White Light A19 Bulb",
+        model_name="Soft White A19 Bulb",
         model_id=None,
-        capabilities=LightCapabilities(tunable_white=True),
+        capabilities=LightCapabilities(),
+        characteristics=LightCharacteristics(lumens=800, min_kelvin=2700)
     ),
     10: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
