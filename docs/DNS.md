@@ -29,7 +29,7 @@ To perform domain level DNS redirection (all devices that request `cm.gelighting
 - Power cycle cync devices.
 
 ### Selective DNS routing
-**Selective DNS routing means, only certain devies will have their DNS redirected, the rest of your network will not have their DNS redirected for those specific domains**
+**Selective DNS routing means, only certain devices will have their DNS redirected, the rest of your network will not have their DNS redirected for those specific domains**
 
 You can use `views` to selectively route DNS requests based on the requesting device.
 
@@ -39,6 +39,12 @@ You can use `views` to selectively route DNS requests based on the requesting de
 - Enter the data, click Save, go back to `Services`>`Unbound DNS`>`General` and restart unbound by clicking the button beside the green arrow.
 ![Unbound DNS Restart](./assets/opnsense_unbound_restart.png)
 - Power cycle cync devices.
+
+>[!NOTE]
+> Newer versions of opnsense do not include the **Custom Options* selector in the GUI anymore.
+> You will need to ssh into your OPNsense box and create the unbound configuration file directly:
+> `nano /usr/local/etc/unbound.opnsense.d/cync.conf` and paste the `server:` and `view:` configs 
+> into that file, then restart unbound in the GUI.
 
 The following example will reroute DNS requests for `cm.gelighting.com` and `cm-sec.gelighting.com` to local IP `10.0.1.9` (this is where `cync-lan` server should be running) **only for requesting device IPs** `10.0.1.167` and `10.0.1.112` (These should be Cync WiFi devices).
 
