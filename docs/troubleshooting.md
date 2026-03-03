@@ -11,8 +11,8 @@ make sure that all Cync devices can talk to the local IP of the machine running 
 **the cloud, power cycle the new device(s) after disabling DNS redirect**
 
 After device(s) are added to your Cync account:
-- [export](./cync-lan%20sub-commands.md#export) a new config
-- re-enable the [DNS redirection](./DNS.md)
-- restart the server
-- power cycle the new device(s)
-- **Optional:** *you may need to power cycle other Cync devices if the DNS redirection was disabled for a while*
+- Export a new config
+- Re-enable the [DNS redirection](./DNS.md)
+- Restart the server
+- Power cycle the new device(s)
+- **Optional:** *you may need to power cycle other Cync devices if the DNS redirection was disabled for a while**
