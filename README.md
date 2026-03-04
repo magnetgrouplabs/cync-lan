@@ -134,7 +134,7 @@ For the `yes` / `no` value, the user input is cast to a lower case string stripp
 | `CYNC_MAX_TCP_CONN`          | Maximum WiFi devices allowed to connect at a time (keep down log spam, unneccesary load)                                    | `8`                                   | int  |
 | `CYNC_TCP_WHITELIST`         | Comma separated string of allowed IPs (keep down log spam, unneccesary load, restrict to 'always-on' devices)               | Allow ALL IPs                         | str  |
 | `CYNC_TCP_BLACKHOLE_DELAY`   | If a non-whitelisted IP *OR* max devices reached connects, how long to keep the connection open before closing it (seconds) | `14.95`                               | int  |
-| `CYNC_BASE_DIR`              | Base directory for **ALL** files.                                                                                           | `/root/cync-lan                       | str  |
+| `CYNC_BASE_DIR`              | Base directory for **ALL** files.                                                                                           | `/root/cync-lan`                      | str  |
 | `CYNC_CFGAPPEND_DIR`         | Directory for persistent files (config, uuid, etc.) This is **appended** to `CYNC_BASE_DIR`                                 | `/config`                             | str  |
 | `CYNC_STATIC_DIR`            | Absolute path to where the index.html and css/js dirs/files are stored                                                      | `{CYNC_BASE_DIR}/www`                 | str  |
 | `CYNC_CONFIG_DIR`            | Absolute path to where the persistent files are stored (cync_mesh.yaml, uuid.txt and .cloud_auth.yaml)                      | `{CYNC_BASE_DIR}{CYNC_CFGAPPEND_DIR}` | str  |
