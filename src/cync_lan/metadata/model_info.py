@@ -494,7 +494,7 @@ device_type_map = {
     138: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color BR30 Floodlight",
-        characteristics=LightCharacteristics(lumens=750, min_kelvin=2000, max_kelvin=7000),
+        characteristics=LightCharacteristics(lumens=750, min_kelvin=2000, max_kelvin=7000, cri=90),
         model_id="CLEDR309CD1",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(tunable_white=True, color=True),
