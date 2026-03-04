@@ -31,7 +31,6 @@ class LightCapabilities:
     dynamic: bool = False
     color: bool = False
     colour: Annotated[bool, Field(alias="color")] = False
-    dynamic: bool = False
 
 
 @dataclass
@@ -89,6 +88,10 @@ class DeviceTypeInfo:
                     if add_str:
                         add_str += " "
                     add_str += f"{kelvin_data}"
+                if self.characteristics.cri:
+                    if add_str:
+                        add_str += " "
+                        add_str += f"{self.characteristics.cri} CRI"
         if add_str:
             add_str = f" [{add_str}]"
         return base_str + add_str
