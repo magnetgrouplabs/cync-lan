@@ -130,7 +130,7 @@ For the `yes` / `no` value, the user input is cast to a lower case string stripp
 | `CYNC_HASS_STATUS_TOPIC`     | HASS status topic for birth / will                                                                                          | `status`                              | str  |
 | `CYNC_HASS_BIRTH_MSG`        | HASS birth message                                                                                                          | `online`                              | str  |
 | `CYNC_HASS_WILL_MSG`         | HASS will message                                                                                                           | `offline`                             | str  |
-| `CYNC_CMD_BROADCASTS`        | Number of WiFi devices to send state *change* commands to (2+ offers noticably improved command response)                   | `2`                                   | int  |
+| `CYNC_CMD_BROADCASTS`        | Number of WiFi devices to send state *change* commands to (2+ offers noticeable command response improvements)              | `2`                                   | int  |
 | `CYNC_MAX_TCP_CONN`          | Maximum WiFi devices allowed to connect at a time (keep down log spam, unneccesary load)                                    | `8`                                   | int  |
 | `CYNC_TCP_WHITELIST`         | Comma separated string of allowed IPs (keep down log spam, unneccesary load, restrict to 'always-on' devices)               | Allow ALL IPs                         | str  |
 | `CYNC_TCP_BLACKHOLE_DELAY`   | If a non-whitelisted IP *OR* max devices reached connects, how long to keep the connection open before closing it (seconds) | `14.95`                               | int  |
