@@ -102,6 +102,9 @@ By default, the export webserver is started when cync-lan is. Navigate to http:/
 You can always supply `--help` to the cync-lan.py script to get a breakdown.
 
 ## Env Vars
+For the `yes` / `no` value, the user input is cast to a lower case string stripped of spaces:
+- Yes answers: "true", "1", "yes", "y", "t", 1, "on", "o"
+- No is interpreted as anything other than the yes answers
 
 | Variable                     | Description                                                                                                                 | Default                               | Type |
 |------------------------------|-----------------------------------------------------------------------------------------------------------------------------|---------------------------------------|------|
