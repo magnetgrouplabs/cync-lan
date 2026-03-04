@@ -1,17 +1,22 @@
+>[!IMPORTANT]
+> [DNS redirection REQUIRED](./docs/DNS.md)
+
 # THERE IS NOW A HASS *App* FOR THIS PROJECT!
 
 Huge thanks to [@CodeNeedsCoffee](https://github.com/CodeNeedsCoffee) for the initial work on the App! For the foreseeable future, this project will stick with MQTT. The only way to create HASS devices is MQTT or an integration.
 
 [![Open your Home Assistant instance and show the add App repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fbaudneo%2Fhass-addons)
 
-The existing `python` branch will remain for users who prefer a non HASS App setup. However, docker is required.
+The existing `python` branch will remain for users who prefer a non HASS App setup. However, docker is required and 
+manual installation is no longer officially supported.
 
 ![GitHub Release](https://img.shields.io/github/v/release/baudneo/cync-lan) 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/baudneo/cync-lan/container-package-publish.yml) 
 ![Docker Pulls](https://img.shields.io/docker/pulls/baudneo/cync-lan)
 
->[!IMPORTANT]
-> [DNS redirection REQUIRED](./docs/DNS.md)
+>[!WARNING]
+> **DO NOT** contact GE / Savant for troubleshooting while using this project, open issues here and tag @baudneo 
+> for fast responses.
 
 Async HTTP/MQTT LAN controller for Cync/C by GE devices. **Local** only control
 of **most** Cync devices via MQTT JSON payloads following the Home Assistant MQTT JSON schema. 
@@ -25,14 +30,21 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 [iburistu](https://github.com/iburistu) and 
 [juanboro](https://github.com/juanboro)
 
+>[!WARNING]
+> It is **HIGHLY** recommended that you do **NOT** do any firmware upgrades to Cync devices after running cync-lan. 
+> It is extremely (change 1 param in a constructor or config) easy for Savant to disable this method of local control.
+> While new methods may restore functionality, I'd rather not go down that route.
+
 ## Prerequisites
-- Python 3.9+ (Walrus [:=] operator and `zoneinfo` built-in package used)
+- ~~Python 3.9+ (Walrus [:=] operator and `zoneinfo` built-in package used)~~ ;)
+- Docker
 - A minimum of 1, non battery powered, Wi-Fi (*Direct Connect*) Cync / C by GE device to act as the TCP <-> BT bridge (always on)
 - Cync account with devices added
 - MQTT broker (I recommend EMQX)
-- [Export devices](./docs/command_line_sub_commands.md#export) from the Cync cloud to a YAML file; first export requires account email, password and an OTP emailed to you
+- Export devices from the Cync cloud to a YAML file; first export requires account email, password and an OTP emailed to you
+  - After configuring and running the container, navigate to http://127.0.0.1:23778 to export devices from the cloud 
 - [DNS override/redirection](./docs/DNS.md) for `cm.gelighting.com`, `cm-sec.gelighting.com` or `cm-ge.xlink.cn` to a local host that will run `cync-lan`
-- **Optional:** *[Firewall](#firewall) rules to allow cync devices to talk to `cync-lan`* **(VLANs?)**
+- **Optional:** *[Firewall](#firewall) / routing rules to allow cync devices to talk to `cync-lan`* **(VLANs?)**
 
 >[!NOTE]
 > You still need to use your Cync account to add new devices as you acquire them.
@@ -40,20 +52,14 @@ Forked from [cync-lan](https://github.com/iburistu/cync-lan) and
 ---
 
 ## Installation
+
+See the [installation](./docs/install.md) docs for more information
+
+
 >[!IMPORTANT]
-> You must visit http://localhost:23778 in order to export your Cync devices from the Cync 
-> cloud API. This requires your email, password and the code that will be emailed to you during export.
-
->[!TIP]
-> Existing `cync_mesh.yaml`? simply use the config as it is: bind mount into the docker container.
-
-If you add new devices to your Cync account, you need to export a new config. Please see [Install docs](./docs/install.md)
-for more information.
-
-### Updating Docker Container
-#### Updating using a new image
-- `cd` to cync-lan docker directory where `docker-compose.yaml` is located
-- run: `docker compose pull && docker compose up -d --force-recreate`
+> After configuring and running the container, you must visit http://localhost:23778 in order to export your Cync 
+> devices from the Cync cloud API. Your Cync account creds are set using an env var in the docker-compose.yaml file, 
+> the web app will initiate OTP auth and export homes and each homes device list
 
 ---
 
@@ -74,9 +80,9 @@ Also, let me set some expectations:
 At the moment, the script receives an MQTT command, sends commands to `x` devices 
 and receives a `success` response all within 200 ish ms (0.2 seconds). I don't know
 what happens on the device itself, but the TCP <-> BT bridge is not instant, when it really should be. Work continues on improving this.
-2. There are no provisions for the Cync app to work with this project, any data sent by the app is black-holed (for now, anyway).
-3. If I don't own a device, I cant test it, and if I cant test it, I cant support it. If you want a device supported, you will need to set up a debug env and send me logs of the device communicating with the cloud server.
-
+2. There are no provisions for the Cync app to work with this project, any data sent by the app is black-holed (for now, anyway; MITM proxy to record commands and responses in the future).
+3. If I don't own a device, I cant test it, and if I cant test it, I cant support it easily. 
+   - If you want a device supported, you will need to set up a debug env and send me logs of the device communicating with the cloud server.
 ---
 
 ## Config file
@@ -88,48 +94,47 @@ See the example [config file](./cync_mesh_example.yaml)
 By default, the export webserver is started when cync-lan is. Navigate to http://localhost:23778 to access the export web app.
 
 #### CLI
-There is an `export` [sub command](./docs/command_line_sub_commands.md#export) 
-that is interactive and will query the Cync cloud API, export all home and each homes devices to a YAML file.
+~~There is an `export` sub command~~ **Currently being refactored**.
 
 ---
 
 ## CLI arguments
-You can always supply `--help` to the cync-lan.py script to get a 
-breakdown. Please see the 
-[sub-command docs](./docs/command_line_sub_commands.md) for more information.
+You can always supply `--help` to the cync-lan.py script to get a breakdown.
 
 ## Env Vars
 
-| Variable                     | Description                                                                                                                 | Default               | Type |
-|------------------------------|-----------------------------------------------------------------------------------------------------------------------------|-----------------------|------|
-| `CYNC_ENABLE_EXPORTER`       | Start the local device export web app                                                                                       | `yes`                 | str  |
-| `CYNC_ACCOUNT_USERNAME`      | Cync account username (email) *Required* for the export web app                                                             |                       | str  |
-| `CYNC_ACCOUNT_PASSWORD`      | Cync account password *Required* for the export web app                                                                     |                       | str  |
-| `CYNC_OVERWRITE_CONFIG_FILE` | On export, overwrite `cync_mesh.yaml` or use a numbered system: `*_1.yaml`, `*_2.yaml`, etc.                                | `no`                  | str  |
-| `CYNC_MQTT_HOST`             | Host of MQTT broker                                                                                                         | `homeassistant.local` | str  |
-| `CYNC_MQTT_PORT`             | Port of MQTT broker                                                                                                         | `1883`                | int  |
-| `CYNC_MQTT_USER`             | Username for MQTT broker                                                                                                    |                       | str  |
-| `CYNC_MQTT_PASS`             | Password for MQTT broker                                                                                                    |                       | str  |
-| `CYNC_MQTT_CONN_DELAY`       | Delay between MQTT re-connections (seconds)                                                                                 | `10`                  | int  |
-| `CYNC_DEBUG`                 | Enable debug logging                                                                                                        | `no`                  | int  |
-| `CYNC_RAW_DEBUG`             | Enable raw binary message debug logging                                                                                     | `no`                  | int  |
-| `CYNC_DEVICE_CERT`           | Path to cert file                                                                                                           | `certs/server.pem`    | str  |
-| `CYNC_DEVICE_KEY`            | Path to key file                                                                                                            | `certs/server.key`    | str  |
-| `CYNC_SRV_HOST`              | Interface to listen on                                                                                                      | `0.0.0.0`             | str  |
-| `CYNC_PORT`                  | Port to listen for Cync devices (Do NOT change, unless you know what you are doing)                                         | `23779`               | int  |
-| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | CYNC_SRV_HOST value   | str  |
-| `CYNC_EXPORT_PORT`           | Port for export web app                                                                                                     | `23778`               | int  |
-| `CYNC_TOPIC`                 | MQTT topic                                                                                                                  | `cync_lan`            | str  |
-| `CYNC_HASS_TOPIC`            | Home Assistant topic                                                                                                        | `homeassistant`       | str  |
-| `CYNC_HASS_STATUS_TOPIC`     | HASS status topic for birth / will                                                                                          | `status`              | str  |
-| `CYNC_HASS_BIRTH_MSG`        | HASS birth message                                                                                                          | `online`              | str  |
-| `CYNC_HASS_WILL_MSG`         | HASS will message                                                                                                           | `offline`             | str  |
-| `CYNC_CMD_BROADCASTS`        | Number of WiFi devices to send state *change* commands to                                                                   | `2`                   | int  |
-| `CYNC_MAX_TCP_CONN`          | Maximum WiFi devices allowed to connect at a time                                                                           | `8`                   | int  |
-| `CYNC_TCP_WHITELIST`         | Comma separated string of allowed IPs                                                                                       | Allow ALL IPs         | str  |
-| `CYNC_TCP_BLACKHOLE_DELAY`   | If a non-whitelisted IP *OR* max devices reached connects, how long to keep the connection open before closing it (seconds) | `14.95`               | int  |
-| `CYNC_BASE_DIR`              | Base directory for **ALL** files. This is **prepended** to `CYNC_CONFIG_DIR`                                                | `/root/cync-lan       | str  |
-| `CYNC_CONFIG_DIR`            | Directory for persistent files (config, uuid, etc.) This is **appended** to `CYNC_BASE_DIR`                                 | `/config`             | str  |
+| Variable                     | Description                                                                                                                 | Default                               | Type |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------------------|---------------------------------------|------|
+| `CYNC_ENABLE_EXPORTER`       | Start the local device export web app                                                                                       | `yes`                                 | str  |
+| `CYNC_ACCOUNT_USERNAME`      | Cync account username (email) *Required* for the export web app                                                             |                                       | str  |
+| `CYNC_ACCOUNT_PASSWORD`      | Cync account password *Required* for the export web app                                                                     |                                       | str  |
+| `CYNC_OVERWRITE_CONFIG_FILE` | On export, overwrite `cync_mesh.yaml` or use a numbered system: `*_1.yaml`, `*_2.yaml`, etc.                                | `no`                                  | str  |
+| `CYNC_MQTT_HOST`             | Host of MQTT broker                                                                                                         | `homeassistant.local`                 | str  |
+| `CYNC_MQTT_PORT`             | Port of MQTT broker                                                                                                         | `1883`                                | int  |
+| `CYNC_MQTT_USER`             | Username for MQTT broker                                                                                                    |                                       | str  |
+| `CYNC_MQTT_PASS`             | Password for MQTT broker                                                                                                    |                                       | str  |
+| `CYNC_MQTT_CONN_DELAY`       | Delay between MQTT re-connections (seconds)                                                                                 | `10`                                  | int  |
+| `CYNC_DEBUG`                 | Enable debug logging                                                                                                        | `no`                                  | int  |
+| `CYNC_RAW_DEBUG`             | Enable raw binary message debug logging                                                                                     | `no`                                  | int  |
+| `CYNC_DEVICE_CERT`           | Path to cert file                                                                                                           | `certs/server.pem`                    | str  |
+| `CYNC_DEVICE_KEY`            | Path to key file                                                                                                            | `certs/server.key`                    | str  |
+| `CYNC_SRV_HOST`              | Interface to listen on                                                                                                      | `0.0.0.0`                             | str  |
+| `CYNC_PORT`                  | Port to listen for Cync devices (Do NOT change, unless you know what you are doing)                                         | `23779`                               | int  |
+| `CYNC_EXPORT_HOST`           | Host for export web app                                                                                                     | `{CYNC_SRV_HOST}`                     | str  |
+| `CYNC_EXPORT_PORT`           | Port for export web app                                                                                                     | `23778`                               | int  |
+| `CYNC_TOPIC`                 | MQTT topic                                                                                                                  | `cync_lan`                            | str  |
+| `CYNC_HASS_TOPIC`            | Home Assistant topic                                                                                                        | `homeassistant`                       | str  |
+| `CYNC_HASS_STATUS_TOPIC`     | HASS status topic for birth / will                                                                                          | `status`                              | str  |
+| `CYNC_HASS_BIRTH_MSG`        | HASS birth message                                                                                                          | `online`                              | str  |
+| `CYNC_HASS_WILL_MSG`         | HASS will message                                                                                                           | `offline`                             | str  |
+| `CYNC_CMD_BROADCASTS`        | Number of WiFi devices to send state *change* commands to (2+ offers noticably improved command response)                   | `2`                                   | int  |
+| `CYNC_MAX_TCP_CONN`          | Maximum WiFi devices allowed to connect at a time (keep down log spam, unneccesary load)                                    | `8`                                   | int  |
+| `CYNC_TCP_WHITELIST`         | Comma separated string of allowed IPs (keep down log spam, unneccesary load, restrict to 'always-on' devices)               | Allow ALL IPs                         | str  |
+| `CYNC_TCP_BLACKHOLE_DELAY`   | If a non-whitelisted IP *OR* max devices reached connects, how long to keep the connection open before closing it (seconds) | `14.95`                               | int  |
+| `CYNC_BASE_DIR`              | Base directory for **ALL** files.                                                                                           | `/root/cync-lan                       | str  |
+| `CYNC_CFGAPPEND_DIR`         | Directory for persistent files (config, uuid, etc.) This is **appended** to `CYNC_BASE_DIR`                                 | `/config`                             | str  |
+| `CYNC_STATIC_DIR`            | Absolute path to where the index.html and css/js dirs/files are stored                                                      | `{CYNC_BASE_DIR}/www`                 | str  |
+| `CYNC_CONFIG_DIR`            | Absolute path to where the persistent files are stored (cync_mesh.yaml, uuid.txt and .cloud_auth.yaml)                      | `{CYNC_BASE_DIR}{CYNC_CFGAPPEND_DIR}` | str  |
 
 
 ## Controlling devices

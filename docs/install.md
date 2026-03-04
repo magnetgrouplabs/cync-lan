@@ -1,5 +1,8 @@
 # Installation
 
+>[!TIP]
+> Existing `cync_mesh.yaml`? simply use the config as it is: bind mount into the docker container.
+
 ## Docker
 This project is bundled as a docker image, you can build it locally or pull images from DockerHub.
 
@@ -8,7 +11,7 @@ This project is bundled as a docker image, you can build it locally or pull imag
 - `cd` into the repo directory
 - `docker compose -f ./docker/Dockerfile build` will output a `baudneo/cync-lan:latest` tagged image
 - Copy the example `docker-compose.yaml` file and edit it for your setup.
-- Set up env vars using the docker-compose `environment` section or uncomment the `env_file` option and create an .env file
+- Set up env vars using the docker-compose `environment` section or uncomment the `env_file` option and create an .env file (See [example](../docker/example.env))
 
 #### Upgrading
 - Rebuild the image
@@ -17,7 +20,7 @@ This project is bundled as a docker image, you can build it locally or pull imag
 
 ### Pull
 - Copy the example [`docker-compose.yaml`](../docker/docker-compose.yaml) file
-- Set up env vars using the docker-compose `environment` section or uncomment the `env_file` option and create an .env file (See [example](../docker/example.env))
+- Set up env vars using the docker-compose `environment` section or uncomment the `env_file` option and create an .env file (See [example](../docker/example.env)) 
 - `docker compose up -d --force-recreate`
 
 #### Upgrading
