@@ -76,10 +76,13 @@ class DeviceTypeInfo:
                     add_str += f"{self.characteristics.lumens} lum"
                 if self.characteristics.min_kelvin:
                     if (
-                        (self.characteristics.min_kelvin
-                        and self.characteristics.max_kelvin)
+                        self.characteristics.min_kelvin
+                        and self.characteristics.max_kelvin
                     ):
-                        if self.characteristics.min_kelvin != self.characteristics.max_kelvin:
+                        if (
+                            self.characteristics.min_kelvin
+                            != self.characteristics.max_kelvin
+                        ):
                             kelvin_data = f"{self.characteristics.min_kelvin}-{self.characteristics.max_kelvin}K"
                         else:
                             kelvin_data = f"{self.characteristics.min_kelvin}K"
@@ -129,7 +132,7 @@ device_type_map = {
         model_name="Soft White A19 Bulb",
         model_id=None,
         capabilities=LightCapabilities(),
-        characteristics=LightCharacteristics(lumens=800, min_kelvin=2700)
+        characteristics=LightCharacteristics(lumens=800, min_kelvin=2700),
     ),
     10: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
@@ -325,7 +328,7 @@ device_type_map = {
         model_name="Switch",
         model_id=None,
         protocol=DeviceProtocol(TCP=True),
-        capabilities=SwitchCapabilities()
+        capabilities=SwitchCapabilities(),
     ),
     52: DeviceTypeInfo(
         type=DeviceClassification.SWITCH,
@@ -494,7 +497,9 @@ device_type_map = {
     138: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color BR30 Floodlight",
-        characteristics=LightCharacteristics(lumens=750, min_kelvin=2000, max_kelvin=7000, cri=90),
+        characteristics=LightCharacteristics(
+            lumens=750, min_kelvin=2000, max_kelvin=7000, cri=90
+        ),
         model_id="CLEDR309CD1",
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(tunable_white=True, color=True),

@@ -409,6 +409,7 @@ class RawTokenData(BaseModel):
     """
     Model for cloud token data.
     """
+
     access_token: str
     user_id: Union[str, int]
     expire_in: Union[str, int]
