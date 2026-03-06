@@ -7,32 +7,38 @@ assignees: ''
 
 ---
 
+**How are you running CyncLAN?**
+[ ] HASS app
+[ ] Docker
+
+>[!IMPORTANT]
+> Please enable DEBUG level logs and catch the error
+> HASS app configuration: debug level toggle ON
+> Docker image: CYNC_DEBUG=yes in the env vars
+
+**What version**
+In the logs, there will be a version number right after starting, or you can exec into the docker container and run `cync-lan -V`
+
+```
+03/06/26 14:41:22.475 INFO [main:194] > main: App config has set logging level to: Debug
+03/06/26 14:41:22.476 INFO [utils:307] > check_uuid: UUID found in /homeassistant/.storage/cync-lan/config/uuid.txt for the 'CyncLAN Bridge' MQTT device
+03/06/26 14:41:22.476 INFO [main:85] > CyncLAN:init: CyncLAN (version: 0.0.4b1) stack initializing...
+```
+
+
 **Describe the bug**
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**Logs**
+Please add logs here:
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+```log
+
+
+```
 
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
-
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
-
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
 
 **Additional context**
 Add any other context about the problem here.
