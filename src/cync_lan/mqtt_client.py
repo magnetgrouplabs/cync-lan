@@ -797,8 +797,7 @@ class MQTTClient:
                     supported = node.metadata.supported
                     if not supported:
                         logger.warning(
-                            f"{lp} Device '{node.name}' (ID: {node.id} / Type: {node.type}) is not supported, "
-                            f"skipping HASS discovery..."
+                            f"{lp} Device '{node.name}' (ID: {node.id} / Type: {node.type}) is not supported, skipping HASS discovery..."
                         )
                         continue
 
