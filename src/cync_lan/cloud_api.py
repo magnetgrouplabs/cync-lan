@@ -498,7 +498,7 @@ class CyncCloudAPI:
                 new_device["mac"] = bt_mac
                 new_device["wifi_mac"] = wifi_mac
                 # give it the default 0, if it has children, we will overwrite the 0
-                new_device["endpoints"] = {0: name}
+                new_device["endpoints"] = {0: dev_name}
                 del cync_device
                 new_home["devices"][dev_id] = new_device
 
