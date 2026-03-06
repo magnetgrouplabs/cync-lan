@@ -140,6 +140,8 @@ class CyncLAN:
 def parse_cli():
     parser = argparse.ArgumentParser(description="Cync LAN Server")
 
+    parser.add_argument("-V", "--version", action="version", version=CYNC_VERSION)
+
     parser.add_argument(
         "--export-server",
         "--enable-export-server",
