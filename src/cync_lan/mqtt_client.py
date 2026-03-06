@@ -789,10 +789,16 @@ class MQTTClient:
             try:
                 for node in g.ncync_server.devices.values():
                     device_uuid = node.hass_id
+                    if node.metadata is None:
+                        logger.warning(f"{lp} Device '{node.name}' (ID: {node.id} / Type: {node.type}) has no metadata,"
+                                       f" meaning this type hasn't been seen before and can not be controlled, please "
+                                       f"see: https://github.com/baudneo/cync-lan/issues/12")
+                        continue
                     supported = node.metadata.supported
                     if not supported:
                         logger.warning(
-                            f"{lp} Device '{node.name}' (ID: {node.id} / Type: {node.type}) is not supported, skipping HASS discovery..."
+                            f"{lp} Device '{node.name}' (ID: {node.id} / Type: {node.type}) is not supported, "
+                            f"skipping HASS discovery..."
                         )
                         continue
 
