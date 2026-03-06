@@ -82,7 +82,7 @@ class CyncLAN:
     def __init__(self):
         lp = f"{self.lp}init:"
         check_for_uuid()
-        logger.debug(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing...")
+        logger.info(f"{lp} CyncLAN (version: {CYNC_VERSION}) stack initializing...")
 
     async def start(self):
         """Start the Cync LAN server, MQTT client, and Export server."""
