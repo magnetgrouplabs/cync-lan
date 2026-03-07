@@ -405,6 +405,14 @@ device_type_map = {
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(tunable_white=True, color=True),
     ),
+    76: DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Full Color Dynamic Effects Cafe` Lights",
+        model_info="CCF48CDOD",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(tunable_white=True, color=True, dynamic=True),
+        characteristics=LightCharacteristics(lumens=130, min_kelvin=2000, max_kelvin=7000)
+    ),
     80: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Tunable White Light (Unknown)",
