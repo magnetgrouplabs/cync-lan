@@ -405,6 +405,13 @@ device_type_map = {
         protocol=DeviceProtocol(TCP=True),
         capabilities=LightCapabilities(tunable_white=True, color=True),
     ),
+    72:DeviceTypeInfo(
+        type=DeviceClassification.LIGHT,
+        model_name="Full Color Dynamic Effects Premium Light Strip",
+        protocol=DeviceProtocol(TCP=True),
+        capabilities=LightCapabilities(tunable_white=True, color=True),
+        characteristics=LightCharacteristics(lumens=1600, min_kelvin=2000, max_kelvin=7000, cri=80),
+    ),
     76: DeviceTypeInfo(
         type=DeviceClassification.LIGHT,
         model_name="Full Color Dynamic Effects Cafe` Lights",
