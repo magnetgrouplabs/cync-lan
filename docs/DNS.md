@@ -180,6 +180,22 @@ cm.gelighting.com.      3600    IN      A       10.0.1.9 <---- Overridden to a l
 ;; MSG SIZE  rcvd: 62
 ```
 
+
+# TP-Link Omada Controller
+If you have a TP-Link Omada Gateway/Router that is managed through the Omada Controller platform, you can also perform a DNS override. Screenshots are based on Omada controller version 6.1.0.19.
+
+Create rules for each of the following domains: `cm.gelighting.com` / `cm-sec.gelighting.com` and `cm-ge.xlink.cn`
+- In the Omada dashboard, go to **Configuration** -> **Network Config** -> **LAN** -> **LAN DNS**
+![Omada DNS Interface](./assets/omada-local-dns-interface.png)
+- Create a new **LAN DNS Profile** for each entry
+- Enter `cm.gelighting.com` / `cm-sec.gelighting.com` or `cm-ge.xlink.cn` in **Domain Name**.
+- Under **Status**, check the **Enable** checkbox.
+- Enter a name under **Profile Name**.
+- Enter the IP of the machine that will be running cync-lan in **IP Address**. 
+- Fill in default value for any other required fields.
+![Omada DNS Example](./assets/omada-local-dns-interface.png)
+
+
 # AdGuard Home
 AdGuard Home works similarly to the other examples on this page, but it has also the particularity to be able to **cache** DNS entries, that might require flushing.
 
