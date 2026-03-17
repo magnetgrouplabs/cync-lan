@@ -9,3 +9,5 @@ uuid.txt
 uv.lock
 dump.txt
 *.egg-info
+.claude*
+CLAUDE.md
