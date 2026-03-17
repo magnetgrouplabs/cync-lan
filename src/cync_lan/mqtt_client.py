@@ -490,6 +490,46 @@ class MQTTClient:
             return True
         return False
 
+    def _build_endpoint_payload(self, node: CyncNode, sub_id: Optional[int] = None) -> bytes:
+        """Build a complete MQTT state payload from the endpoint's current attributes.
+
+        HA's MQTT JSON light schema requires all state fields in a single message.
+        """
+        _id = sub_id if sub_id is not None else 0
+        endpoint = node.endpoints.get(_id)
+        power_status = "OFF" if endpoint.power == 0 else "ON"
+
+        if node.is_plug or node.is_switch:
+            return power_status.encode()
+
+        mqtt_dev_state: Dict[str, Union[int, str, dict]] = {"state": power_status}
+
+        if endpoint.brightness is not None:
+            mqtt_dev_state["brightness"] = endpoint.brightness
+
+        if endpoint.temperature is not None:
+            if node.supports_rgb and (
+                any(
+                    [
+                        endpoint.red is not None,
+                        endpoint.green is not None,
+                        endpoint.blue is not None,
+                    ]
+                )
+                and endpoint.temperature == 254
+            ):
+                mqtt_dev_state["color_mode"] = "rgb"
+                mqtt_dev_state["color"] = {
+                    "r": endpoint.red,
+                    "g": endpoint.green,
+                    "b": endpoint.blue,
+                }
+            elif node.supports_temperature and (0 <= endpoint.temperature <= 100):
+                mqtt_dev_state["color_mode"] = "color_temp"
+                mqtt_dev_state["color_temp"] = self.cync2kelvin(endpoint.temperature)
+
+        return json.dumps(mqtt_dev_state).encode()
+
     async def update_endpoint_power(
         self, node: CyncNode, state: int, sub_id: Optional[int] = None
     ) -> bool:
@@ -498,13 +538,9 @@ class MQTTClient:
         _id = sub_id if sub_id is not None else 0
         endpoint = node.endpoints.get(_id)
         endpoint.power = state
-        power_status = "OFF" if state == 0 else "ON"
-        mqtt_tgt_state = {"state": power_status}
-        if node.is_plug or node.is_switch:
-            mqtt_tgt_state = power_status.encode()  # send ON or OFF if plug
-        else:
-            mqtt_tgt_state = json.dumps(mqtt_tgt_state).encode()  # send JSON
-        return await self.pub_endpoint_state(node, mqtt_tgt_state, sub_id)
+        return await self.pub_endpoint_state(
+            node, self._build_endpoint_payload(node, sub_id), sub_id
+        )
 
     async def update_brightness(
         self, node: CyncNode, bri: int, sub_id: Optional[int] = None
@@ -514,12 +550,10 @@ class MQTTClient:
         _id = sub_id if sub_id is not None else 0
         endpoint = node.endpoints.get(_id)
         endpoint.brightness = bri
-        state = "ON"
         if bri == 0:
-            state = "OFF"
-        mqtt_dev_state = {"state": state, "brightness": bri}
+            endpoint.power = 0
         return await self.pub_endpoint_state(
-            node, json.dumps(mqtt_dev_state).encode(), sub_id
+            node, self._build_endpoint_payload(node, sub_id), sub_id
         )
 
     async def update_temperature(
@@ -531,17 +565,12 @@ class MQTTClient:
         endpoint = node.endpoints.get(_id)
 
         if node.supports_temperature:
-            mqtt_dev_state = {
-                "state": "ON",
-                "color_mode": "color_temp",
-                "color_temp": self.cync2kelvin(temp),
-            }
             endpoint.temperature = temp
             endpoint.red = 0
             endpoint.green = 0
             endpoint.blue = 0
             return await self.pub_endpoint_state(
-                node, json.dumps(mqtt_dev_state).encode(), sub_id
+                node, self._build_endpoint_payload(node, sub_id), sub_id
             )
         return False
 
@@ -562,17 +591,12 @@ class MQTTClient:
                 ]
             )
         ):
-            mqtt_tgt_state = {
-                "state": "ON",
-                "color_mode": "rgb",
-                "color": {"r": rgb[0], "g": rgb[1], "b": rgb[2]},
-            }
             endpoint.red = rgb[0]
             endpoint.green = rgb[1]
             endpoint.blue = rgb[2]
             endpoint.temperature = 254
             return await self.pub_endpoint_state(
-                node, json.dumps(mqtt_tgt_state).encode(), sub_id
+                node, self._build_endpoint_payload(node, sub_id), sub_id
             )
         return False
 
@@ -627,42 +651,7 @@ class MQTTClient:
             )
             return False
         node: CyncNode = g.ncync_server.devices[node_id]
-        endpoint = node.endpoints[sub_id]
-        power_status = "OFF" if endpoint.power == 0 else "ON"
-        mqtt_dev_state: Union[Dict[str, Union[int, str, bytes, dict, list]], bytes] = {
-            "state": power_status
-        }
-
-        if node.is_plug or node.is_switch:
-            mqtt_dev_state = power_status.encode()
-
-        else:
-            if endpoint.brightness is not None:
-                mqtt_dev_state["brightness"] = endpoint.brightness
-
-            if endpoint.temperature is not None:
-                if node.supports_rgb and (
-                    any(
-                        [
-                            endpoint.red is not None,
-                            endpoint.green is not None,
-                            endpoint.blue is not None,
-                        ]
-                    )
-                    and endpoint.temperature == 254
-                ):
-                    mqtt_dev_state["color_mode"] = "rgb"
-                    mqtt_dev_state["color"] = {
-                        "r": endpoint.red,
-                        "g": endpoint.green,
-                        "b": endpoint.blue,
-                    }
-                elif node.supports_temperature and (0 <= endpoint.temperature <= 100):
-                    mqtt_dev_state["color_mode"] = "color_temp"
-                    mqtt_dev_state["color_temp"] = self.cync2kelvin(
-                        endpoint.temperature
-                    )
-            mqtt_dev_state = json.dumps(mqtt_dev_state).encode()
+        mqtt_dev_state = self._build_endpoint_payload(node, sub_id)
 
         return await self.pub_endpoint_state(
             node, mqtt_dev_state, sub_id, from_pkt=from_pkt
@@ -827,8 +816,6 @@ class MQTTClient:
                         "via_device": str(g.uuid),
                     }
                     entity_registry_struct = {
-                        # retain for older HASS versions
-                        "object_id": obj_id,
                         "default_entity_id": obj_id,
                         # set to None if only device name is relevant, this sets entity name
                         "name": None,
@@ -867,7 +854,6 @@ class MQTTClient:
                             entity_registry_struct["avty_t"] = (
                                 "{0}/availability/{1}".format(self.topic, cdevice_uuid)
                             )
-                            entity_registry_struct["object_id"] = cobj_id
                             entity_registry_struct["default_entity_id"] = cobj_id
                             entity_registry_struct["name"] = ep_state.name
                             entity_registry_struct["unique_id"] = (
@@ -930,7 +916,6 @@ class MQTTClient:
         restart_btn_entity_struct = {
             "platform": "button",
             # obj_id is to link back to the bridge device
-            "object_id": CYNC_BRIDGE_OBJ_ID + "_restart",
             "default_entity_id": CYNC_BRIDGE_OBJ_ID + "_restart",
             "command_topic": f"{self.topic}/set/bridge/restart",
             "state_topic": f"{self.topic}/status/bridge/restart",
@@ -990,7 +975,6 @@ class MQTTClient:
         entity_type = "binary_sensor"
         entity_unique_id = f"{bridge_base_unique_id}_tcp_server_running"
         tcp_server_entity_conf = {
-            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "name": "nCync TCP Server Running",
             "state_topic": f"{self.topic}/status/bridge/tcp_server/running",
@@ -1059,7 +1043,6 @@ class MQTTClient:
         entity_unique_id = f"{bridge_base_unique_id}_otp_input"
         otp_num_entity_cfg = {
             "platform": "number",
-            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "icon": "mdi:lock",
             "command_topic": f"{self.topic}/set/bridge/otp/input",
@@ -1086,7 +1069,6 @@ class MQTTClient:
         entity_unique_id = f"{bridge_base_unique_id}_connected_tcp_devices"
         num_tcp_devices_entity_conf = {
             "platform": "sensor",
-            "object_id": entity_unique_id,
             "default_entity_id": entity_unique_id,
             "name": "TCP Devices Connected",
             "state_topic": f"{self.topic}/status/bridge/tcp_devices/connected",
